@@ -13,7 +13,7 @@ export function SearchBar({ initialQuery = "" }: { initialQuery?: string }) {
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
 
   const fetchSuggestions = useCallback(async (q: string) => {
     if (q.length < 2) {
