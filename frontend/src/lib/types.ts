@@ -179,3 +179,24 @@ export interface CategorySuggestion {
 export interface CategorySearchResponse {
   categories: CategorySuggestion[];
 }
+
+export interface DeepSearchStartResponse {
+  job_id: string;
+  status: string;
+  progress: number;
+  message: string;
+}
+
+export interface DeepSearchStatusResponse {
+  id: string;
+  query: string;
+  status: "queued" | "running" | "completed" | "failed" | "not_found";
+  progress: number;
+  scanned_products: number;
+  total_products: number;
+  offers_upserted: number;
+  started_at: string;
+  completed_at: string | null;
+  message: string;
+  error: string | null;
+}

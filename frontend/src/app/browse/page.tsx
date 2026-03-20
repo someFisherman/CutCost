@@ -1,8 +1,8 @@
 "use client";
 
 import { useSearchParams, useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
-import { browseProducts, getFilters } from "@/lib/api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { browseProducts, getDeepSearchStatus, getFilters, startDeepSearch } from "@/lib/api";
 import { SearchBar } from "@/components/SearchBar";
 import { FilterSidebar } from "@/components/FilterSidebar";
 import { SortBar } from "@/components/SortBar";
@@ -10,13 +10,17 @@ import { ModeToggle } from "@/components/ModeToggle";
 import { ProductCard } from "@/components/ProductCard";
 import { Footer } from "@/components/Footer";
 import { Loader2, SlidersHorizontal, X } from "lucide-react";
-import { Suspense, useCallback, useState } from "react";
-import type { SearchMode, SortMode } from "@/lib/types";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import type { DeepSearchStatusResponse, SearchMode, SortMode } from "@/lib/types";
 
 function BrowseContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [deepSearch, setDeepSearch] = useState<DeepSearchStatusResponse | null>(null);
+  const deepSearchJobRef = useRef<string | null>(null);
+  const deepSearchQueryRef = useRef<string | null>(null);
 
   const q = searchParams.get("q") || undefined;
   const category = searchParams.get("category") || undefined;
@@ -80,6 +84,63 @@ function BrowseContent() {
     label: `${key.replace("_", " ")}: ${value}`,
   }));
 
+  useEffect(() => {
+    const shouldRunDeepSearch = !!q && q.trim().length >= 2 && page === 1;
+    if (!shouldRunDeepSearch) return;
+    if (deepSearchQueryRef.current === q && deepSearchJobRef.current) return;
+
+    let cancelled = false;
+    let pollTimer: number | null = null;
+
+    (async () => {
+      try {
+        const started = await startDeepSearch(q!);
+        if (cancelled) return;
+        deepSearchJobRef.current = started.job_id;
+        deepSearchQueryRef.current = q!;
+        setDeepSearch({
+          id: started.job_id,
+          query: q!,
+          status: started.status as DeepSearchStatusResponse["status"],
+          progress: started.progress,
+          scanned_products: 0,
+          total_products: 0,
+          offers_upserted: 0,
+          started_at: new Date().toISOString(),
+          completed_at: null,
+          message: started.message,
+          error: null,
+        });
+
+        const poll = async () => {
+          if (!deepSearchJobRef.current) return;
+          const status = await getDeepSearchStatus(deepSearchJobRef.current);
+          if (cancelled) return;
+          setDeepSearch(status);
+          if (status.status === "completed" || status.status === "failed" || status.status === "not_found") {
+            await queryClient.invalidateQueries({ queryKey: ["browse"] });
+            await queryClient.invalidateQueries({ queryKey: ["filters"] });
+            return;
+          }
+          pollTimer = window.setTimeout(poll, 2000);
+        };
+
+        pollTimer = window.setTimeout(poll, 1000);
+      } catch {
+        if (!cancelled) {
+          setDeepSearch(null);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (pollTimer !== null) {
+        window.clearTimeout(pollTimer);
+      }
+    };
+  }, [q, page, queryClient]);
+
   return (
     <div className="min-h-screen flex flex-col">
       <header className="border-b border-[var(--color-border)] py-4 px-4">
@@ -125,6 +186,28 @@ function BrowseContent() {
           mode={mode}
           onModeChange={(m) => updateParams({ mode: m, page: undefined })}
         />
+
+        {deepSearch && (
+          <div className="mt-3 mb-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <p className="font-medium">
+                Deep Search: {deepSearch.message}
+              </p>
+              <span className="text-[var(--color-text-secondary)]">
+                {deepSearch.progress}%
+              </span>
+            </div>
+            <div className="mt-2 h-2 rounded-full bg-[var(--color-border)] overflow-hidden">
+              <div
+                className="h-full bg-[var(--color-accent)] transition-all duration-300"
+                style={{ width: `${Math.max(2, deepSearch.progress)}%` }}
+              />
+            </div>
+            <p className="mt-2 text-xs text-[var(--color-text-secondary)]">
+              {deepSearch.scanned_products}/{deepSearch.total_products || "?"} products scanned · {deepSearch.offers_upserted} offers updated
+            </p>
+          </div>
+        )}
 
         <div className="flex gap-6">
           {/* Desktop sidebar */}

@@ -6,6 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
+from app.services.deep_search_service import (
+    deep_search_job_to_dict,
+    get_deep_search_job,
+    start_deep_search,
+)
 from app.services.search_service import autocomplete, parse_query_to_filters, search_products
 
 router = APIRouter()
@@ -61,6 +66,27 @@ class SearchResponse(BaseModel):
     variants: list[VariantSummary] = []
     redirect_to: str | None = None
     parsed_query: ParsedQueryOut | None = None
+
+
+class DeepSearchStartResponse(BaseModel):
+    job_id: str
+    status: str
+    progress: int
+    message: str
+
+
+class DeepSearchStatusResponse(BaseModel):
+    id: str
+    query: str
+    status: str
+    progress: int
+    scanned_products: int
+    total_products: int
+    offers_upserted: int
+    started_at: str
+    completed_at: str | None = None
+    message: str
+    error: str | None = None
 
 
 @router.get("/autocomplete", response_model=AutocompleteResponse)
@@ -164,3 +190,36 @@ async def api_parse_query(
         color=parsed.color,
         has_filters=parsed.has_filters,
     )
+
+
+@router.post("/deep-search/start", response_model=DeepSearchStartResponse)
+async def api_start_deep_search(
+    q: str = Query(..., min_length=2, max_length=500),
+):
+    job = await start_deep_search(q)
+    return DeepSearchStartResponse(
+        job_id=job.id,
+        status=job.status,
+        progress=job.progress,
+        message=job.message,
+    )
+
+
+@router.get("/deep-search/{job_id}", response_model=DeepSearchStatusResponse)
+async def api_get_deep_search(job_id: str):
+    job = await get_deep_search_job(job_id)
+    if not job:
+        return DeepSearchStatusResponse(
+            id=job_id,
+            query="",
+            status="not_found",
+            progress=0,
+            scanned_products=0,
+            total_products=0,
+            offers_upserted=0,
+            started_at="",
+            completed_at=None,
+            message="Deep search job not found",
+            error=None,
+        )
+    return DeepSearchStatusResponse(**deep_search_job_to_dict(job))

@@ -2,6 +2,8 @@ import type {
   AutocompleteItem,
   BrowseResponse,
   CategorySearchResponse,
+  DeepSearchStartResponse,
+  DeepSearchStatusResponse,
   FilterOptionsResponse,
   ProductOffersResponse,
   SearchResult,
@@ -11,6 +13,14 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 async function fetcher<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`);
+  if (!res.ok) {
+    throw new Error(`API error: ${res.status} ${res.statusText}`);
+  }
+  return res.json();
+}
+
+async function postFetcher<T>(path: string): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, { method: "POST" });
   if (!res.ok) {
     throw new Error(`API error: ${res.status} ${res.statusText}`);
   }
@@ -83,6 +93,14 @@ export async function getCategoryChildren(
 
 export async function getTopCategories(): Promise<CategorySearchResponse> {
   return fetcher("/api/categories/top");
+}
+
+export async function startDeepSearch(query: string): Promise<DeepSearchStartResponse> {
+  return postFetcher(`/api/deep-search/start?q=${encodeURIComponent(query)}`);
+}
+
+export async function getDeepSearchStatus(jobId: string): Promise<DeepSearchStatusResponse> {
+  return fetcher(`/api/deep-search/${encodeURIComponent(jobId)}`);
 }
 
 export function formatPrice(amount: number, currency: string): string {
