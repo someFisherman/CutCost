@@ -13,7 +13,7 @@ export function SearchBar({ initialQuery = "" }: { initialQuery?: string }) {
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const fetchSuggestions = useCallback(async (q: string) => {
     if (q.length < 2) {
@@ -30,9 +30,9 @@ export function SearchBar({ initialQuery = "" }: { initialQuery?: string }) {
   }, []);
 
   useEffect(() => {
-    clearTimeout(debounceRef.current);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => fetchSuggestions(query), 200);
-    return () => clearTimeout(debounceRef.current);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query, fetchSuggestions]);
 
   function handleSubmit(e: React.FormEvent) {
