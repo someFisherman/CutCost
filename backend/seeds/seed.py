@@ -6,6 +6,9 @@ import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from sqlalchemy import text
 
 from app.database import async_session, engine
