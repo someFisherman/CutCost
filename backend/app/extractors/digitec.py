@@ -15,8 +15,6 @@ from app.extractors.base import BaseExtractor, ExtractedOffer
 
 logger = logging.getLogger(__name__)
 
-GRAPHQL_URL = "https://www.digitec.ch/api/graphql"
-
 PRODUCT_QUERY = """query GetProduct($id: Int!) {
   productDetailsLegacy(productId: $id) {
     product {
@@ -63,12 +61,12 @@ OFFER_TYPE_TO_CONDITION = {
 }
 
 
-def _build_headers(lang: str = "de") -> dict:
+def _build_headers(base_url: str, lang: str = "de") -> dict:
     return {
         "Content-Type": "application/json",
         "Accept": "application/json",
-        "Origin": "https://www.digitec.ch",
-        "Referer": "https://www.digitec.ch/",
+        "Origin": base_url,
+        "Referer": f"{base_url}/",
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -101,7 +99,8 @@ class DigitecExtractor(BaseExtractor):
 
     def __init__(self, lang: str = "de"):
         self.lang = lang
-        self.headers = _build_headers(lang)
+        self.graphql_url = f"{self.base_url}/api/graphql"
+        self.headers = _build_headers(self.base_url, lang)
 
     async def search_product(self, query: str) -> list[str]:
         """Not supported externally — Digitec blocked search via API.
@@ -113,7 +112,7 @@ class DigitecExtractor(BaseExtractor):
         """Fetch all offers for a Digitec product by numeric ID."""
         async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
             resp = await client.post(
-                GRAPHQL_URL,
+                self.graphql_url,
                 json={"query": PRODUCT_QUERY, "variables": {"id": product_id}},
                 headers=self.headers,
             )

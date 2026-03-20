@@ -7,13 +7,16 @@ and dynamic filter option discovery.
 import re
 from dataclasses import dataclass
 
-from sqlalchemy import Integer, String, case, cast, func, or_, select
+from sqlalchemy import Integer, String, case, cast, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.merchant import Merchant
 from app.models.offer import Offer
-from app.offer_visibility import EXCLUDED_OFFER_MERCHANT_SLUGS
+from app.offer_visibility import (
+    EXCLUDED_OFFER_MERCHANT_SLUGS,
+    EXCLUDED_OFFER_URL_SUBSTRINGS,
+)
 from app.models.product import Product, ProductVariant
 from app.models.trust import TrustScore
 
@@ -80,9 +83,31 @@ async def browse_products(
 ) -> tuple[list[BrowseProduct], int]:
     """Browse products with filters, returning matching variants with best prices."""
 
+    excluded_merchant_ids = select(Merchant.id).where(
+        Merchant.slug.in_(EXCLUDED_OFFER_MERCHANT_SLUGS)
+    )
+    curated_merchant_ids = select(Merchant.id).where(Merchant.is_curated == True)  # noqa: E712
+
+    offer_exists_conditions = [
+        Offer.product_variant_id == ProductVariant.id,
+        Offer.is_active == True,  # noqa: E712
+        ~Offer.merchant_id.in_(excluded_merchant_ids),
+    ]
+    if filters.condition and filters.condition != "all":
+        offer_exists_conditions.append(Offer.condition == filters.condition)
+    if filters.mode == "high_trust":
+        offer_exists_conditions.append(Offer.merchant_id.in_(curated_merchant_ids))
+    for broken_url in EXCLUDED_OFFER_URL_SUBSTRINGS:
+        offer_exists_conditions.append(~Offer.url.contains(broken_url))
+
+    has_eligible_offer = exists(
+        select(1).select_from(Offer).where(*offer_exists_conditions)
+    )
+
     query = (
         select(ProductVariant)
         .join(Product)
+        .where(has_eligible_offer)
         .options(selectinload(ProductVariant.product))
     )
 
@@ -122,6 +147,7 @@ async def browse_products(
         select(func.count(ProductVariant.id))
         .select_from(ProductVariant)
         .join(Product)
+        .where(has_eligible_offer)
     )
     if filters.q:
         normalized = filters.q.strip().lower()
@@ -300,6 +326,8 @@ async def get_filter_options(
         )
         .group_by(Offer.condition)
     )
+    for broken_url in EXCLUDED_OFFER_URL_SUBSTRINGS:
+        cond_q = cond_q.where(~Offer.url.contains(broken_url))
     conds_raw = (await db.execute(cond_q)).all()
     conditions = [FilterOption(value=r[0], label=r[0].replace("_", " ").title(), count=r[1]) for r in conds_raw]
 
@@ -311,6 +339,8 @@ async def get_filter_options(
             ~Offer.merchant_id.in_(excluded_merchant_ids),
         )
     )
+    for broken_url in EXCLUDED_OFFER_URL_SUBSTRINGS:
+        price_q = price_q.where(~Offer.url.contains(broken_url))
     price_raw = (await db.execute(price_q)).one_or_none()
     price_min = float(price_raw[0]) if price_raw and price_raw[0] else None
     price_max = float(price_raw[1]) if price_raw and price_raw[1] else None
@@ -351,6 +381,8 @@ async def _get_variant_offer_summary(
         .where(~Offer.merchant_id.in_(excluded_merchant_ids))
         .options(selectinload(Offer.merchant))
     )
+    for broken_url in EXCLUDED_OFFER_URL_SUBSTRINGS:
+        offer_q = offer_q.where(~Offer.url.contains(broken_url))
 
     if filters.condition and filters.condition != "all":
         offer_q = offer_q.where(Offer.condition == filters.condition)

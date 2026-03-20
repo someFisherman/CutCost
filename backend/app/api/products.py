@@ -9,7 +9,10 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.database import get_db
 from app.models.merchant import Merchant
-from app.offer_visibility import EXCLUDED_OFFER_MERCHANT_SLUGS
+from app.offer_visibility import (
+    EXCLUDED_OFFER_MERCHANT_SLUGS,
+    EXCLUDED_OFFER_URL_SUBSTRINGS,
+)
 from app.models.offer import Offer
 from app.models.product import Product, ProductVariant
 from app.models.trust import TrustScore
@@ -122,6 +125,8 @@ async def get_product_offers(
         .where(~Offer.merchant_id.in_(excluded_merchant_ids))
         .options(selectinload(Offer.merchant))
     )
+    for broken_url in EXCLUDED_OFFER_URL_SUBSTRINGS:
+        offer_query = offer_query.where(~Offer.url.contains(broken_url))
     if condition != "all":
         offer_query = offer_query.where(Offer.condition == condition)
     if mode == "high_trust":

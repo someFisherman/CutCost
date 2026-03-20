@@ -12,3 +12,8 @@ EXCLUDED_OFFER_MERCHANT_SLUGS: Final[frozenset[str]] = frozenset(
         "mediamarkt-ch",
     }
 )
+
+# Exact broken/dead links observed in production.
+EXCLUDED_OFFER_URL_SUBSTRINGS: Final[tuple[str, ...]] = (
+    "amazon.de/dp/B0CMZ4D4XF",
+)

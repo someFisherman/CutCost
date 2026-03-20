@@ -16,6 +16,7 @@ export function SearchBar({ initialQuery = "", showGuidedHint = false, onSwitchT
   const [query, setQuery] = useState(initialQuery);
   const [suggestions, setSuggestions] = useState<AutocompleteItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [hintDismissed, setHintDismissed] = useState(false);
   const justSubmitted = useRef(false);
@@ -23,7 +24,13 @@ export function SearchBar({ initialQuery = "", showGuidedHint = false, onSwitchT
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceTimer = useRef<number | null>(null);
 
-  const showGuidedPopup = showGuidedHint && !hintDismissed && query.length >= 2 && !isOpen;
+  const showGuidedPopup =
+    showGuidedHint &&
+    !hintDismissed &&
+    query.length >= 2 &&
+    !isOpen &&
+    !isFocused &&
+    suggestions.length === 0;
 
   const fetchSuggestions = useCallback(async (q: string) => {
     if (justSubmitted.current) return;
@@ -44,16 +51,21 @@ export function SearchBar({ initialQuery = "", showGuidedHint = false, onSwitchT
   }, []);
 
   useEffect(() => {
+    if (!isFocused) {
+      setIsOpen(false);
+      return;
+    }
     if (debounceTimer.current !== null) window.clearTimeout(debounceTimer.current);
     debounceTimer.current = window.setTimeout(() => fetchSuggestions(query), 200);
     return () => {
       if (debounceTimer.current !== null) window.clearTimeout(debounceTimer.current);
     };
-  }, [query, fetchSuggestions]);
+  }, [query, fetchSuggestions, isFocused]);
 
   function navigate(item: AutocompleteItem) {
     setIsOpen(false);
     setSuggestions([]);
+    setIsFocused(false);
     inputRef.current?.blur();
     if (item.type === "category" && item.filter_url) {
       router.push(item.filter_url);
@@ -67,6 +79,7 @@ export function SearchBar({ initialQuery = "", showGuidedHint = false, onSwitchT
     justSubmitted.current = true;
     setIsOpen(false);
     setSuggestions([]);
+    setIsFocused(false);
     inputRef.current?.blur();
 
     if (selectedIndex >= 0 && suggestions[selectedIndex]) {
@@ -112,11 +125,17 @@ export function SearchBar({ initialQuery = "", showGuidedHint = false, onSwitchT
             setSelectedIndex(-1);
           }}
           onFocus={() => {
+            setIsFocused(true);
             if (!justSubmitted.current && suggestions.length > 0) {
               setIsOpen(true);
             }
           }}
-          onBlur={() => setTimeout(() => setIsOpen(false), 200)}
+          onBlur={() =>
+            setTimeout(() => {
+              setIsFocused(false);
+              setIsOpen(false);
+            }, 200)
+          }
           onKeyDown={handleKeyDown}
           placeholder='Search any product... e.g. "iPhone 16 Pro 256GB"'
           className="w-full pl-12 pr-4 py-4 text-lg rounded-2xl
