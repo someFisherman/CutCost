@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379"
 
     anthropic_api_key: str = ""
-    amazon_associate_tag: str = "cutcost-21"
+    amazon_associate_tag: str = "audix-20"
 
     environment: str = "development"
     api_base_url: str = "http://localhost:8000"

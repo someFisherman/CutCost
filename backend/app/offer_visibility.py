@@ -16,4 +16,7 @@ EXCLUDED_OFFER_MERCHANT_SLUGS: Final[frozenset[str]] = frozenset(
 # Exact broken/dead links observed in production.
 EXCLUDED_OFFER_URL_SUBSTRINGS: Final[tuple[str, ...]] = (
     "amazon.de/dp/B0CMZ4D4XF",
+    "amazon.de/dp/B0D7JRZF9X",
+    "interdiscount.ch/de/google-pixel-9-pro-128gb-obsidian",
+    "backmarket.ch/de-ch/p/iphone-15-pro-256-gb-black-titanium/refurbished",
 )

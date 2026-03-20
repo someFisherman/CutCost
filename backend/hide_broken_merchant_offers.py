@@ -15,7 +15,10 @@ if sys.platform == "win32":
 from sqlalchemy import text
 
 from app.database import async_session
-from app.offer_visibility import EXCLUDED_OFFER_MERCHANT_SLUGS
+from app.offer_visibility import (
+    EXCLUDED_OFFER_MERCHANT_SLUGS,
+    EXCLUDED_OFFER_URL_SUBSTRINGS,
+)
 
 
 async def main():
@@ -32,10 +35,21 @@ async def main():
                 {"slug": slug},
             )
             total += r.rowcount or 0
+        for bad_url in EXCLUDED_OFFER_URL_SUBSTRINGS:
+            r = await db.execute(
+                text("""
+                    UPDATE offer
+                    SET is_active = false
+                    WHERE url LIKE :bad_url AND is_active = true
+                """),
+                {"bad_url": f"%{bad_url}%"},
+            )
+            total += r.rowcount or 0
         await db.commit()
         print(
-            f"Deactivated {total} offer(s) for merchant slugs: "
-            f"{sorted(EXCLUDED_OFFER_MERCHANT_SLUGS)}"
+            f"Deactivated {total} offer(s) for merchant/url exclusions. "
+            f"Merchants={sorted(EXCLUDED_OFFER_MERCHANT_SLUGS)} "
+            f"URLs={list(EXCLUDED_OFFER_URL_SUBSTRINGS)}"
         )
 
 

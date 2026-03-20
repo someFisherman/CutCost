@@ -1,4 +1,4 @@
-﻿"""Deep search service: long-running query crawl with progress tracking."""
+"""Deep search service: long-running query crawl with progress tracking."""
 
 from __future__ import annotations
 
@@ -190,6 +190,7 @@ async def _run_deep_search(job_id: str) -> None:
             merchant_cache: dict[str, Merchant] = {}
             scanned = 0
             upserted = 0
+            failed_sources = 0
 
             for entry in candidates:
                 elapsed = (datetime.now(timezone.utc) - started).total_seconds()
@@ -221,11 +222,23 @@ async def _run_deep_search(job_id: str) -> None:
                     scanned += 1
                     continue
 
-                extractor = _extractor_for_slug(merchant_slug)
-                offers = await extractor.extract_offers_by_id(entry["product_id"])
-                now = datetime.now(timezone.utc)
-                for ext in offers:
-                    upserted += await _upsert_offer(db, variant, merchant, ext, now)
+                try:
+                    extractor = _extractor_for_slug(merchant_slug)
+                    offers = await extractor.extract_offers_by_id(entry["product_id"])
+                    now = datetime.now(timezone.utc)
+                    for ext in offers:
+                        upserted += await _upsert_offer(db, variant, merchant, ext, now)
+                except Exception:
+                    failed_sources += 1
+                    await db.rollback()
+                    scanned += 1
+                    async with _jobs_lock:
+                        j = _jobs[job_id]
+                        j.scanned_products = scanned
+                        j.offers_upserted = upserted
+                        j.progress = int((scanned / max(1, len(candidates))) * 100)
+                        j.message = f"Scanned {scanned}/{len(candidates)} products ({failed_sources} source errors)"
+                    continue
 
                 await db.commit()
                 scanned += 1
@@ -243,7 +256,8 @@ async def _run_deep_search(job_id: str) -> None:
             j.progress = 100
             j.completed_at = _now_iso()
             if not j.message.startswith("Timed out"):
-                j.message = f"Completed. Updated {j.offers_upserted} offers"
+                suffix = f" with {failed_sources} source errors" if failed_sources else ""
+                j.message = f"Completed. Updated {j.offers_upserted} offers{suffix}"
 
     except Exception as exc:
         async with _jobs_lock:

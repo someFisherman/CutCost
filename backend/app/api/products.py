@@ -17,6 +17,7 @@ from app.models.offer import Offer
 from app.models.product import Product, ProductVariant
 from app.models.trust import TrustScore
 from app.services.cost_service import TotalCostBreakdown, calculate_total_cost
+from app.services.affiliate_service import build_affiliate_url
 from app.services.ranking_service import OfferForRanking, RankedOffer, rank_offers
 
 router = APIRouter()
@@ -190,6 +191,10 @@ async def get_product_offers(
 
         cost_out = _cost_to_out(r.total_cost)
 
+        effective_affiliate_url = offer.affiliate_url or build_affiliate_url(
+            offer.url, merchant.slug
+        )
+
         offer_outputs.append(OfferOut(
             id=str(offer.id),
             merchant=MerchantOut(
@@ -210,8 +215,8 @@ async def get_product_offers(
             match_confidence=float(offer.match_confidence) if offer.match_confidence else None,
             mismatch_flags=offer.mismatch_flags,
             url=offer.url,
-            affiliate_url=offer.affiliate_url,
-            is_affiliate=offer.affiliate_url is not None,
+            affiliate_url=effective_affiliate_url,
+            is_affiliate=effective_affiliate_url is not None,
             rank=r.rank,
             label=r.label,
             explanation=r.explanation,
