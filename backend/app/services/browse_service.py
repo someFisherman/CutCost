@@ -92,7 +92,9 @@ async def browse_products(
                 ProductVariant.display_name.ilike(f"%{normalized}%"),
                 Product.canonical_name.ilike(f"%{normalized}%"),
                 Product.brand.ilike(f"%{normalized}%"),
-                Product.product_line.ilike(f"%{normalized}%"),
+                func.coalesce(Product.product_line, "").ilike(f"%{normalized}%"),
+                func.similarity(ProductVariant.display_name, normalized) > 0.15,
+                func.similarity(Product.canonical_name, normalized) > 0.15,
             )
         )
 

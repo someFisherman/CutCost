@@ -11,49 +11,69 @@ export function SearchBar({ initialQuery = "" }: { initialQuery?: string }) {
   const [suggestions, setSuggestions] = useState<AutocompleteItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
+  const justSubmitted = useRef(false);
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const debounceTimer = useRef<number | null>(null);
 
   const fetchSuggestions = useCallback(async (q: string) => {
+    if (justSubmitted.current) return;
     if (q.length < 2) {
       setSuggestions([]);
+      setIsOpen(false);
       return;
     }
     try {
       const data = await getAutocomplete(q);
-      setSuggestions(data.suggestions);
-      setIsOpen(data.suggestions.length > 0);
+      if (!justSubmitted.current) {
+        setSuggestions(data.suggestions);
+        setIsOpen(data.suggestions.length > 0);
+      }
     } catch {
       setSuggestions([]);
     }
   }, []);
 
   useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => fetchSuggestions(query), 200);
+    if (debounceTimer.current !== null) window.clearTimeout(debounceTimer.current);
+    debounceTimer.current = window.setTimeout(() => fetchSuggestions(query), 200);
     return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (debounceTimer.current !== null) window.clearTimeout(debounceTimer.current);
     };
   }, [query, fetchSuggestions]);
 
   function navigate(item: AutocompleteItem) {
+    setIsOpen(false);
+    setSuggestions([]);
+    inputRef.current?.blur();
     if (item.type === "category" && item.filter_url) {
       router.push(item.filter_url);
     } else if (item.slug) {
       router.push(`/product/${item.slug}`);
     }
-    setIsOpen(false);
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    justSubmitted.current = true;
+    setIsOpen(false);
+    setSuggestions([]);
+    inputRef.current?.blur();
+
     if (selectedIndex >= 0 && suggestions[selectedIndex]) {
-      navigate(suggestions[selectedIndex]);
+      const item = suggestions[selectedIndex];
+      if (item.type === "category" && item.filter_url) {
+        router.push(item.filter_url);
+      } else if (item.slug) {
+        router.push(`/product/${item.slug}`);
+      }
     } else if (query.trim()) {
       router.push(`/browse?q=${encodeURIComponent(query.trim())}`);
     }
-    setIsOpen(false);
+
+    setTimeout(() => {
+      justSubmitted.current = false;
+    }, 500);
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -65,6 +85,7 @@ export function SearchBar({ initialQuery = "" }: { initialQuery?: string }) {
       setSelectedIndex((i) => Math.max(i - 1, -1));
     } else if (e.key === "Escape") {
       setIsOpen(false);
+      inputRef.current?.blur();
     }
   }
 
@@ -77,11 +98,16 @@ export function SearchBar({ initialQuery = "" }: { initialQuery?: string }) {
           type="text"
           value={query}
           onChange={(e) => {
+            justSubmitted.current = false;
             setQuery(e.target.value);
             setSelectedIndex(-1);
           }}
-          onFocus={() => suggestions.length > 0 && setIsOpen(true)}
-          onBlur={() => setTimeout(() => setIsOpen(false), 150)}
+          onFocus={() => {
+            if (!justSubmitted.current && suggestions.length > 0) {
+              setIsOpen(true);
+            }
+          }}
+          onBlur={() => setTimeout(() => setIsOpen(false), 200)}
           onKeyDown={handleKeyDown}
           placeholder='Search any product... e.g. "iPhone 16 Pro 256GB"'
           className="w-full pl-12 pr-4 py-4 text-lg rounded-2xl
@@ -96,7 +122,7 @@ export function SearchBar({ initialQuery = "" }: { initialQuery?: string }) {
       {isOpen && suggestions.length > 0 && (
         <ul className="absolute z-50 w-full mt-2 py-2 rounded-xl
                        bg-[var(--color-surface)] border border-[var(--color-border)]
-                       shadow-lg max-h-80 overflow-y-auto">
+                       shadow-lg max-h-[60vh] overflow-y-auto overscroll-contain">
           {suggestions.map((item, idx) => (
             <li key={`${item.type}-${item.variant_id || item.filter_url}-${idx}`}>
               <button
@@ -104,7 +130,10 @@ export function SearchBar({ initialQuery = "" }: { initialQuery?: string }) {
                 className={`w-full text-left px-4 py-3 flex items-center gap-3
                            hover:bg-[var(--color-border)] transition-colors
                            ${idx === selectedIndex ? "bg-[var(--color-border)]" : ""}`}
-                onMouseDown={() => navigate(item)}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  navigate(item);
+                }}
               >
                 {item.type === "category" ? (
                   <>
