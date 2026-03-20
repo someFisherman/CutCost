@@ -21,20 +21,21 @@ export default function HomePage() {
 
         <div className="mt-8 flex flex-wrap gap-2 justify-center">
           {[
-            "iPhone 16 Pro 256GB",
-            "Samsung Galaxy S25 Ultra",
-            "Google Pixel 9 Pro",
+            { label: "iPhone 16 Pro", url: "/browse?brand=Apple&product_line=iPhone" },
+            { label: "Samsung Galaxy S25 Ultra", url: "/browse?q=Samsung+Galaxy+S25+Ultra" },
+            { label: "Google Pixel 9 Pro", url: "/browse?q=Google+Pixel+9+Pro" },
+            { label: "Browse All", url: "/browse" },
           ].map((example) => (
             <a
-              key={example}
-              href={`/search?q=${encodeURIComponent(example)}`}
+              key={example.label}
+              href={example.url}
               className="px-3 py-1.5 text-sm rounded-full
                          border border-[var(--color-border)]
                          text-[var(--color-text-secondary)]
                          hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]
                          transition-colors"
             >
-              {example}
+              {example.label}
             </a>
           ))}
         </div>

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Search } from "lucide-react";
+import { Search, ArrowRight, FolderOpen } from "lucide-react";
 import { getAutocomplete } from "@/lib/api";
 import type { AutocompleteItem } from "@/lib/types";
 
@@ -32,15 +32,26 @@ export function SearchBar({ initialQuery = "" }: { initialQuery?: string }) {
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => fetchSuggestions(query), 200);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
   }, [query, fetchSuggestions]);
+
+  function navigate(item: AutocompleteItem) {
+    if (item.type === "category" && item.filter_url) {
+      router.push(item.filter_url);
+    } else if (item.slug) {
+      router.push(`/product/${item.slug}`);
+    }
+    setIsOpen(false);
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (selectedIndex >= 0 && suggestions[selectedIndex]) {
-      router.push(`/product/${suggestions[selectedIndex].slug}`);
+      navigate(suggestions[selectedIndex]);
     } else if (query.trim()) {
-      router.push(`/search?q=${encodeURIComponent(query.trim())}`);
+      router.push(`/browse?q=${encodeURIComponent(query.trim())}`);
     }
     setIsOpen(false);
   }
@@ -72,7 +83,7 @@ export function SearchBar({ initialQuery = "" }: { initialQuery?: string }) {
           onFocus={() => suggestions.length > 0 && setIsOpen(true)}
           onBlur={() => setTimeout(() => setIsOpen(false), 150)}
           onKeyDown={handleKeyDown}
-          placeholder="Search any product… e.g. iPhone 16 Pro 256GB"
+          placeholder='Search any product... e.g. "iPhone 16 Pro 256GB"'
           className="w-full pl-12 pr-4 py-4 text-lg rounded-2xl
                      bg-[var(--color-surface)] border border-[var(--color-border)]
                      focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]
@@ -87,24 +98,33 @@ export function SearchBar({ initialQuery = "" }: { initialQuery?: string }) {
                        bg-[var(--color-surface)] border border-[var(--color-border)]
                        shadow-lg max-h-80 overflow-y-auto">
           {suggestions.map((item, idx) => (
-            <li key={item.variant_id}>
+            <li key={`${item.type}-${item.variant_id || item.filter_url}-${idx}`}>
               <button
                 type="button"
                 className={`w-full text-left px-4 py-3 flex items-center gap-3
                            hover:bg-[var(--color-border)] transition-colors
                            ${idx === selectedIndex ? "bg-[var(--color-border)]" : ""}`}
-                onMouseDown={() => {
-                  router.push(`/product/${item.slug}`);
-                  setIsOpen(false);
-                }}
+                onMouseDown={() => navigate(item)}
               >
-                <span className="text-xs uppercase tracking-wide text-[var(--color-text-secondary)] w-20">
-                  {item.brand}
-                </span>
-                <span className="flex-1 font-medium">{item.display_name}</span>
-                <span className="text-xs text-[var(--color-text-secondary)]">
-                  {item.category}
-                </span>
+                {item.type === "category" ? (
+                  <>
+                    <FolderOpen className="w-4 h-4 text-[var(--color-accent)] flex-shrink-0" />
+                    <span className="flex-1 font-medium text-[var(--color-accent)]">
+                      {item.display_name}
+                    </span>
+                    <ArrowRight className="w-4 h-4 text-[var(--color-accent)]" />
+                  </>
+                ) : (
+                  <>
+                    <span className="text-xs uppercase tracking-wide text-[var(--color-text-secondary)] w-16 flex-shrink-0">
+                      {item.brand}
+                    </span>
+                    <span className="flex-1 font-medium truncate">{item.display_name}</span>
+                    <span className="text-xs text-[var(--color-text-secondary)] flex-shrink-0">
+                      {item.category}
+                    </span>
+                  </>
+                )}
               </button>
             </li>
           ))}

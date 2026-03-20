@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.api import search, products
+from app.api import browse, search, products
 
 
 @asynccontextmanager
@@ -36,6 +36,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(browse.router, prefix="/api", tags=["browse"])
 app.include_router(search.router, prefix="/api", tags=["search"])
 app.include_router(products.router, prefix="/api", tags=["products"])
 

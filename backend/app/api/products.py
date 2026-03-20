@@ -98,6 +98,7 @@ async def get_product_offers(
     country: str = Query(default=settings.default_buyer_country, max_length=2),
     condition: str = Query(default="all", max_length=20),
     sort: str = Query(default="best_deal", max_length=20),
+    mode: str = Query(default="high_trust", max_length=20),
     db: AsyncSession = Depends(get_db),
 ):
     variant_result = await db.execute(
@@ -118,6 +119,8 @@ async def get_product_offers(
     )
     if condition != "all":
         offer_query = offer_query.where(Offer.condition == condition)
+    if mode == "high_trust":
+        offer_query = offer_query.join(Merchant).where(Merchant.is_curated == True)  # noqa: E712
 
     offer_result = await db.execute(offer_query)
     offers = offer_result.scalars().all()
@@ -161,7 +164,7 @@ async def get_product_offers(
             cost_breakdown=cost,
         ))
 
-    ranked = rank_offers(offers_for_ranking, buyer_currency)
+    ranked = rank_offers(offers_for_ranking, buyer_currency, sort=sort)
 
     offer_map = {str(o.id): o for o in offers}
     merchant_map = {str(o.merchant.id): o.merchant for o in offers}
@@ -227,6 +230,7 @@ async def get_product_offers(
             "buyer_country": country,
             "buyer_currency": buyer_currency,
             "sort": sort,
+            "mode": mode,
             "disclaimer": "Prices are estimates. Actual cost may vary at checkout.",
         },
     )

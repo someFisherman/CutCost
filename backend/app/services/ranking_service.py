@@ -104,9 +104,13 @@ def _is_price_outlier(price: float, min_price: float) -> bool:
     return price < min_price * 0.70
 
 
+SORT_MODES = {"best_deal", "price_asc", "price_desc", "trust_desc", "delivery_asc"}
+
+
 def rank_offers(
     offers: list[OfferForRanking],
     buyer_currency: str,
+    sort: str = "best_deal",
 ) -> list[RankedOffer]:
     """Rank offers and assign labels + explanations."""
     if not offers:
@@ -121,7 +125,16 @@ def rank_offers(
         score = compute_best_deal_score(offer, min_cost, max_cost)
         scored.append((score, offer))
 
-    scored.sort(key=lambda x: x[0], reverse=True)
+    if sort == "price_asc":
+        scored.sort(key=lambda x: x[1].total_cost)
+    elif sort == "price_desc":
+        scored.sort(key=lambda x: x[1].total_cost, reverse=True)
+    elif sort == "trust_desc":
+        scored.sort(key=lambda x: x[1].trust_score, reverse=True)
+    elif sort == "delivery_asc":
+        scored.sort(key=lambda x: x[1].delivery_days or 999)
+    else:
+        scored.sort(key=lambda x: x[0], reverse=True)
 
     trusted_offers = [o for _, o in scored if o.trust_score >= 0.60]
     cheapest_trusted = min(trusted_offers, key=lambda o: o.total_cost) if trusted_offers else None

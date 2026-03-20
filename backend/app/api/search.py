@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.services.search_service import autocomplete, search_products
+from app.services.search_service import autocomplete, parse_query_to_filters, search_products
 
 router = APIRouter()
 
@@ -19,6 +19,8 @@ class AutocompleteItem(BaseModel):
     category: str
     brand: str
     image_url: str | None
+    type: str = "variant"
+    filter_url: str | None = None
 
 
 class AutocompleteResponse(BaseModel):
@@ -42,13 +44,23 @@ class ProductSummary(BaseModel):
     image_url: str | None
 
 
+class ParsedQueryOut(BaseModel):
+    brand: str | None = None
+    product_line: str | None = None
+    model: str | None = None
+    storage: str | None = None
+    color: str | None = None
+    has_filters: bool = False
+
+
 class SearchResponse(BaseModel):
     query: str
-    type: str  # "exact", "disambiguation", "multiple", "empty"
+    type: str  # "exact", "disambiguation", "multiple", "browse_redirect", "empty"
     matched_variant: VariantSummary | None = None
     matched_product: ProductSummary | None = None
     variants: list[VariantSummary] = []
     redirect_to: str | None = None
+    parsed_query: ParsedQueryOut | None = None
 
 
 @router.get("/autocomplete", response_model=AutocompleteResponse)
@@ -67,8 +79,20 @@ async def api_search(
     db: AsyncSession = Depends(get_db),
 ):
     result = await search_products(db, q)
+    parsed = result.get("parsed")
 
-    response = SearchResponse(query=q, type=result["type"])
+    parsed_out = None
+    if parsed:
+        parsed_out = ParsedQueryOut(
+            brand=parsed.brand,
+            product_line=parsed.product_line,
+            model=parsed.model,
+            storage=parsed.storage,
+            color=parsed.color,
+            has_filters=parsed.has_filters,
+        )
+
+    response = SearchResponse(query=q, type=result["type"], parsed_query=parsed_out)
 
     if result["type"] == "exact" and result["variant"]:
         v = result["variant"]
@@ -89,6 +113,20 @@ async def api_search(
         )
         response.redirect_to = f"/product/{v.slug}"
 
+    if result["type"] == "browse_redirect" and parsed and parsed.has_filters:
+        params = []
+        if parsed.brand:
+            params.append(f"brand={parsed.brand}")
+        if parsed.product_line:
+            params.append(f"product_line={parsed.product_line}")
+        if parsed.model:
+            params.append(f"model={parsed.model}")
+        if parsed.storage:
+            params.append(f"storage={parsed.storage}")
+        if parsed.color:
+            params.append(f"color={parsed.color}")
+        response.redirect_to = "/browse?" + "&".join(params)
+
     if result["variants"]:
         response.variants = [
             VariantSummary(
@@ -101,4 +139,28 @@ async def api_search(
             for v in result["variants"]
         ]
 
+    if result["type"] == "multiple" and parsed and parsed.has_filters:
+        params = ["q=" + q]
+        if parsed.brand:
+            params.append(f"brand={parsed.brand}")
+        if parsed.product_line:
+            params.append(f"product_line={parsed.product_line}")
+        response.redirect_to = "/browse?" + "&".join(params)
+
     return response
+
+
+@router.get("/parse-query", response_model=ParsedQueryOut)
+async def api_parse_query(
+    q: str = Query(..., min_length=1, max_length=500),
+):
+    """Debug/utility endpoint: parse a query string into structured filters."""
+    parsed = parse_query_to_filters(q)
+    return ParsedQueryOut(
+        brand=parsed.brand,
+        product_line=parsed.product_line,
+        model=parsed.model,
+        storage=parsed.storage,
+        color=parsed.color,
+        has_filters=parsed.has_filters,
+    )

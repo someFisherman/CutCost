@@ -74,6 +74,7 @@ export interface ProductOffersResponse {
     buyer_country: string;
     buyer_currency: string;
     sort: string;
+    mode: string;
     disclaimer: string;
   };
 }
@@ -86,13 +87,80 @@ export interface AutocompleteItem {
   category: string;
   brand: string;
   image_url: string | null;
+  type: "variant" | "category";
+  filter_url: string | null;
+}
+
+export interface ParsedQuery {
+  brand: string | null;
+  product_line: string | null;
+  model: string | null;
+  storage: string | null;
+  color: string | null;
+  has_filters: boolean;
 }
 
 export interface SearchResult {
   query: string;
-  type: "exact" | "disambiguation" | "multiple" | "empty";
+  type: "exact" | "disambiguation" | "multiple" | "browse_redirect" | "empty";
   matched_variant: VariantInfo | null;
   matched_product: ProductInfo | null;
   variants: VariantInfo[];
   redirect_to: string | null;
+  parsed_query: ParsedQuery | null;
 }
+
+export interface BrowseProduct {
+  variant_id: string;
+  product_id: string;
+  display_name: string;
+  slug: string;
+  brand: string;
+  model: string;
+  category: string;
+  product_line: string | null;
+  attributes: Record<string, string>;
+  image_url: string | null;
+  best_price: number | null;
+  best_price_currency: string | null;
+  offer_count: number;
+  best_trust_tier: string | null;
+  condition_available: string[];
+}
+
+export interface BrowseResponse {
+  products: BrowseProduct[];
+  total: number;
+  page: number;
+  per_page: number;
+  total_pages: number;
+  filters_applied: Record<string, string>;
+  mode: string;
+}
+
+export interface FilterOption {
+  value: string;
+  label: string;
+  count: number;
+}
+
+export interface FilterOptionsResponse {
+  categories: FilterOption[];
+  brands: FilterOption[];
+  product_lines: FilterOption[];
+  models: FilterOption[];
+  storages: FilterOption[];
+  colors: FilterOption[];
+  conditions: FilterOption[];
+  price_min: number | null;
+  price_max: number | null;
+}
+
+export type SortMode =
+  | "best_deal"
+  | "price_asc"
+  | "price_desc"
+  | "trust_desc"
+  | "delivery_asc";
+
+export type SearchMode = "high_trust" | "full_search";
