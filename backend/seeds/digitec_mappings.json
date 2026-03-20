@@ -1,0 +1,11 @@
+{
+  "digitec-ch": [
+    {"digitec_id": 49221237, "variant_key": "256gb-natural-titanium", "product_line": "iPhone", "model": "16 Pro"},
+    {"digitec_id": 49221238, "variant_key": "256gb-black-titanium", "product_line": "iPhone", "model": "16 Pro"},
+    {"digitec_id": 49221239, "variant_key": "256gb-desert-titanium", "product_line": "iPhone", "model": "16 Pro"},
+    {"digitec_id": 49221240, "variant_key": "256gb-white-titanium", "product_line": "iPhone", "model": "16 Pro"},
+    {"digitec_id": 38606712, "variant_key": "256gb-black-titanium", "product_line": "iPhone", "model": "15 Pro"},
+    {"digitec_id": 38606713, "variant_key": "256gb-blue-titanium", "product_line": "iPhone", "model": "15 Pro"},
+    {"digitec_id": 41969659, "variant_key": "256gb-titanium-black", "product_line": "Galaxy", "model": "S24 Ultra"}
+  ]
+}

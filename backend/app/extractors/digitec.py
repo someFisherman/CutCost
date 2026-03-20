@@ -1,11 +1,13 @@
 """Digitec.ch / Galaxus.ch extractor.
 
-Uses the public GraphQL API at digitec.ch/api/graphql.
-Same API works for galaxus.ch with minor URL differences.
+Uses the public GraphQL API (productDetailsLegacy query).
+The search endpoint no longer works externally — we use curated
+product IDs and fetch price/offer data directly.
 """
 
 import logging
 import re
+from dataclasses import dataclass
 
 import httpx
 
@@ -15,81 +17,69 @@ logger = logging.getLogger(__name__)
 
 GRAPHQL_URL = "https://www.digitec.ch/api/graphql"
 
-SEARCH_QUERY = """
-query SEARCH_PRODUCTS($query: String!) {
-  search(query: $query) {
-    products {
-      hasMore
-      results {
-        ... on Product {
-          productId
-          name
-          brandName
-          nameProperties
-          productTypeName
-          pricing {
-            price {
-              amountIncl
-              currency
-            }
-          }
-          availability {
-            label
-          }
-          url
-          images {
-            url
-          }
-        }
-      }
-    }
-  }
-}
-"""
-
-PRODUCT_DETAIL_QUERY = """
-query PRODUCT_DETAIL($productId: Int!) {
-  productDetails(productId: $productId) {
+PRODUCT_QUERY = """query GetProduct($id: Int!) {
+  productDetailsLegacy(productId: $id) {
     product {
-      productId
+      id
       name
-      brandName
       nameProperties
-      productTypeName
-      pricing {
-        price {
-          amountIncl
-          currency
+    }
+    offers {
+      id
+      offerId
+      productId
+      shopOfferId
+      price {
+        amountInclusive
+        amountExclusive
+        currency
+      }
+      deliveryOptions {
+        mail {
+          classification
         }
       }
-      availability {
-        label
-        deliveryDate
-      }
-      url
-      images {
-        url
-      }
-      specifications {
-        name
-        propertyGroups {
-          name
-          properties {
-            name
-            value
-          }
-        }
-      }
+      label
+      type
+      canAddToBasket
     }
   }
-}
-"""
+}"""
 
-HEADERS = {
-    "Content-Type": "application/json",
-    "Accept": "application/json",
-    "User-Agent": "CutCost/0.1 (price-comparison; contact@cutcost.com)",
+DELIVERY_MAP = {
+    "TONIGHT": "same_day",
+    "ONEDAY": "next_day",
+    "TWODAYS": "2_days",
+    "WITHIN4DAYS": "3-4_days",
+    "WITHIN7DAYS": "5-7_days",
+    "WITHIN17DAYS": "2-3_weeks",
 }
+
+OFFER_TYPE_TO_CONDITION = {
+    "RETAIL": "new",
+    "MARKETPLACE": "new",
+    "RESALE": "used",
+    "REFURBISHED": "refurbished",
+}
+
+
+def _build_headers(lang: str = "de") -> dict:
+    return {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Origin": "https://www.digitec.ch",
+        "Referer": "https://www.digitec.ch/",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/131.0.0.0 Safari/537.36"
+        ),
+        "x-dg-country": "ch",
+        "x-dg-language": lang,
+        "x-dg-mandator": "406802",
+        "x-dg-portal": "25",
+        "x-dg-testgroup": "Default",
+    }
 
 
 class DigitecExtractor(BaseExtractor):
@@ -99,137 +89,104 @@ class DigitecExtractor(BaseExtractor):
 
     def __init__(self, lang: str = "de"):
         self.lang = lang
-        self.headers = {**HEADERS, "x-dg-language": lang}
+        self.headers = _build_headers(lang)
 
     async def search_product(self, query: str) -> list[str]:
-        async with httpx.AsyncClient(timeout=15) as client:
+        """Not supported externally — Digitec blocked search via API.
+        Returns empty list; we use curated product IDs instead."""
+        logger.info("Digitec search not available externally; use crawl jobs with known product IDs")
+        return []
+
+    async def extract_offers_by_id(self, product_id: int) -> list[ExtractedOffer]:
+        """Fetch all offers for a Digitec product by numeric ID."""
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
             resp = await client.post(
                 GRAPHQL_URL,
-                json={"query": SEARCH_QUERY, "variables": {"query": query}},
+                json={"query": PRODUCT_QUERY, "variables": {"id": product_id}},
                 headers=self.headers,
             )
             resp.raise_for_status()
-            data = resp.json()
+            body = resp.json()
 
-        results = (
-            data.get("data", {})
-            .get("search", {})
-            .get("products", {})
-            .get("results", [])
-        )
+        details = (body.get("data") or {}).get("productDetailsLegacy")
+        if not details:
+            return []
 
-        urls = []
-        for r in results[:10]:
-            url = r.get("url")
-            if url:
-                if not url.startswith("http"):
-                    url = f"{self.base_url}{url}"
-                urls.append(url)
+        product = details.get("product", {})
+        raw_offers = details.get("offers", [])
 
-        return urls
+        name = product.get("name", "")
+        name_props = product.get("nameProperties", "")
+        full_name = f"{name}, {name_props}" if name_props else name
+
+        product_url = f"{self.base_url}/{self.lang}/product/{product_id}"
+
+        results = []
+        for raw in raw_offers:
+            pricing = raw.get("price", {})
+            price = pricing.get("amountInclusive")
+            if price is None:
+                continue
+
+            currency = pricing.get("currency", "CHF")
+            offer_type = raw.get("type", "RETAIL")
+            condition = OFFER_TYPE_TO_CONDITION.get(offer_type, "new")
+
+            delivery_class = (
+                raw.get("deliveryOptions", {})
+                .get("mail", {})
+                .get("classification", "")
+            )
+            delivery_label = DELIVERY_MAP.get(delivery_class, delivery_class.lower())
+
+            results.append(ExtractedOffer(
+                raw_title=full_name,
+                price_amount=float(price),
+                price_currency=currency,
+                product_url=product_url,
+                ean=None,
+                availability="in_stock" if raw.get("canAddToBasket") else "out_of_stock",
+                condition=condition,
+                shipping_cost=0.0,
+                shipping_currency="CHF",
+                image_url=None,
+                brand="",
+                extracted_attributes={
+                    "offer_type": offer_type,
+                    "delivery": delivery_label,
+                    "offer_id": str(raw.get("offerId", "")),
+                },
+                raw_data=raw,
+            ))
+
+        return results
 
     async def extract_offer(self, url: str) -> ExtractedOffer | None:
+        """Extract the best (retail) offer from a Digitec product URL."""
         product_id = self._extract_product_id(url)
         if product_id is None:
             logger.warning("Could not extract product ID from URL: %s", url)
             return None
 
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.post(
-                GRAPHQL_URL,
-                json={
-                    "query": PRODUCT_DETAIL_QUERY,
-                    "variables": {"productId": product_id},
-                },
-                headers=self.headers,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-
-        product = (
-            data.get("data", {})
-            .get("productDetails", {})
-            .get("product")
-        )
-        if not product:
+        offers = await self.extract_offers_by_id(product_id)
+        if not offers:
             return None
 
-        pricing = product.get("pricing", {}).get("price", {})
-        price = pricing.get("amountIncl")
-        currency = pricing.get("currency", "CHF")
-
-        if price is None:
-            return None
-
-        availability_label = (
-            product.get("availability", {}).get("label", "")
-        )
-        availability = "in_stock" if availability_label else "unknown"
-        if availability_label and any(
-            kw in availability_label.lower()
-            for kw in ["nicht", "out of", "unavailable", "ausverkauft"]
-        ):
-            availability = "out_of_stock"
-
-        name_props = product.get("nameProperties", "")
-        brand = product.get("brandName", "")
-        full_name = f"{brand} {product.get('name', '')}".strip()
-        if name_props:
-            full_name = f"{full_name}, {name_props}"
-
-        images = product.get("images", [])
-        image_url = images[0].get("url") if images else None
-
-        attrs = self._extract_specs(product.get("specifications", []))
-        ean = attrs.pop("ean", None) or attrs.pop("gtin", None)
-
-        return ExtractedOffer(
-            raw_title=full_name,
-            price_amount=float(price),
-            price_currency=currency,
-            product_url=url,
-            ean=ean,
-            availability=availability,
-            condition="new",
-            shipping_cost=0.0,
-            shipping_currency="CHF",
-            image_url=image_url,
-            brand=brand,
-            extracted_attributes=attrs,
-            raw_data=product,
-        )
+        retail = [o for o in offers if o.condition == "new"]
+        return retail[0] if retail else offers[0]
 
     def _extract_product_id(self, url: str) -> int | None:
-        match = re.search(r"-(\d+)(?:\?|#|$)", url)
+        match = re.search(r"/product/(\d+)", url)
         if match:
             return int(match.group(1))
-        match = re.search(r"/product/.*?(\d+)", url)
+        match = re.search(r"-(\d+)(?:\?|#|$)", url)
         if match:
             return int(match.group(1))
         return None
 
-    def _extract_specs(self, specifications: list) -> dict:
-        attrs: dict[str, str] = {}
-        for spec_group in specifications:
-            for prop_group in spec_group.get("propertyGroups", []):
-                for prop in prop_group.get("properties", []):
-                    name = prop.get("name", "").lower().strip()
-                    value = prop.get("value", "").strip()
-                    if not name or not value:
-                        continue
-                    if "ean" in name or "gtin" in name:
-                        attrs["ean"] = value
-                    elif "speicher" in name or "storage" in name or "kapazität" in name:
-                        attrs["storage"] = value
-                    elif "farbe" in name or "color" in name or "colour" in name:
-                        attrs["color"] = value
-                    elif "modell" in name or "model" in name:
-                        attrs["model"] = value
-        return attrs
-
 
 class GalaxusExtractor(DigitecExtractor):
-    """Galaxus uses the same API as Digitec."""
+    """Galaxus uses the same backend API as Digitec."""
     merchant_slug = "galaxus-ch"
     merchant_name = "galaxus.ch"
     base_url = "https://www.galaxus.ch"
