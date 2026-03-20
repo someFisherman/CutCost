@@ -1,0 +1,57 @@
+[
+  {
+    "buyer_country": "CH",
+    "product_category": "smartphone",
+    "duty_rate": 0.0,
+    "vat_rate": 0.081,
+    "de_minimis_amount": 5.0,
+    "de_minimis_currency": "CHF",
+    "customs_fee": 11.50,
+    "notes": "ITA: 0% duty on electronics. Swiss VAT 8.1%. Post handling fee CHF 11.50. VAT not collected if VAT amount < CHF 5.",
+    "valid_from": "2024-01-01"
+  },
+  {
+    "buyer_country": "CH",
+    "product_category": "gpu",
+    "duty_rate": 0.0,
+    "vat_rate": 0.081,
+    "de_minimis_amount": 5.0,
+    "de_minimis_currency": "CHF",
+    "customs_fee": 11.50,
+    "notes": "ITA: 0% duty on electronics.",
+    "valid_from": "2024-01-01"
+  },
+  {
+    "buyer_country": "CH",
+    "product_category": "camera",
+    "duty_rate": 0.0,
+    "vat_rate": 0.081,
+    "de_minimis_amount": 5.0,
+    "de_minimis_currency": "CHF",
+    "customs_fee": 11.50,
+    "notes": "ITA: 0% duty on electronics.",
+    "valid_from": "2024-01-01"
+  },
+  {
+    "buyer_country": "CH",
+    "product_category": "laptop",
+    "duty_rate": 0.0,
+    "vat_rate": 0.081,
+    "de_minimis_amount": 5.0,
+    "de_minimis_currency": "CHF",
+    "customs_fee": 11.50,
+    "notes": "ITA: 0% duty on electronics.",
+    "valid_from": "2024-01-01"
+  },
+  {
+    "buyer_country": "CH",
+    "product_category": null,
+    "duty_rate": 0.0,
+    "vat_rate": 0.081,
+    "de_minimis_amount": 5.0,
+    "de_minimis_currency": "CHF",
+    "customs_fee": 11.50,
+    "notes": "Default CH rule. Duty rate may differ for non-electronics — update per category.",
+    "valid_from": "2024-01-01"
+  }
+]

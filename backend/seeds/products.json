@@ -1,0 +1,206 @@
+[
+  {
+    "brand": "Apple",
+    "product_line": "iPhone",
+    "model": "16 Pro",
+    "category": "smartphone",
+    "canonical_name": "Apple iPhone 16 Pro",
+    "release_date": "2024-09-20",
+    "variants": [
+      {
+        "variant_key": "128gb-desert-titanium",
+        "display_name": "Apple iPhone 16 Pro 128GB Desert Titanium",
+        "attributes": {"storage": "128GB", "color": "Desert Titanium", "screen": "6.3\""},
+        "identifiers": [{"type": "ean", "value": "0195949345678"}]
+      },
+      {
+        "variant_key": "256gb-desert-titanium",
+        "display_name": "Apple iPhone 16 Pro 256GB Desert Titanium",
+        "attributes": {"storage": "256GB", "color": "Desert Titanium", "screen": "6.3\""},
+        "identifiers": [{"type": "ean", "value": "0195949345685"}]
+      },
+      {
+        "variant_key": "256gb-natural-titanium",
+        "display_name": "Apple iPhone 16 Pro 256GB Natural Titanium",
+        "attributes": {"storage": "256GB", "color": "Natural Titanium", "screen": "6.3\""},
+        "identifiers": [{"type": "ean", "value": "0195949345692"}]
+      },
+      {
+        "variant_key": "256gb-black-titanium",
+        "display_name": "Apple iPhone 16 Pro 256GB Black Titanium",
+        "attributes": {"storage": "256GB", "color": "Black Titanium", "screen": "6.3\""},
+        "identifiers": [{"type": "ean", "value": "0195949345708"}]
+      },
+      {
+        "variant_key": "256gb-white-titanium",
+        "display_name": "Apple iPhone 16 Pro 256GB White Titanium",
+        "attributes": {"storage": "256GB", "color": "White Titanium", "screen": "6.3\""},
+        "identifiers": [{"type": "ean", "value": "0195949345715"}]
+      },
+      {
+        "variant_key": "512gb-natural-titanium",
+        "display_name": "Apple iPhone 16 Pro 512GB Natural Titanium",
+        "attributes": {"storage": "512GB", "color": "Natural Titanium", "screen": "6.3\""},
+        "identifiers": [{"type": "ean", "value": "0195949345722"}]
+      },
+      {
+        "variant_key": "1tb-natural-titanium",
+        "display_name": "Apple iPhone 16 Pro 1TB Natural Titanium",
+        "attributes": {"storage": "1TB", "color": "Natural Titanium", "screen": "6.3\""},
+        "identifiers": [{"type": "ean", "value": "0195949345739"}]
+      }
+    ]
+  },
+  {
+    "brand": "Apple",
+    "product_line": "iPhone",
+    "model": "16 Pro Max",
+    "category": "smartphone",
+    "canonical_name": "Apple iPhone 16 Pro Max",
+    "release_date": "2024-09-20",
+    "variants": [
+      {
+        "variant_key": "256gb-natural-titanium",
+        "display_name": "Apple iPhone 16 Pro Max 256GB Natural Titanium",
+        "attributes": {"storage": "256GB", "color": "Natural Titanium", "screen": "6.9\""},
+        "identifiers": [{"type": "ean", "value": "0195949346001"}]
+      },
+      {
+        "variant_key": "256gb-desert-titanium",
+        "display_name": "Apple iPhone 16 Pro Max 256GB Desert Titanium",
+        "attributes": {"storage": "256GB", "color": "Desert Titanium", "screen": "6.9\""},
+        "identifiers": [{"type": "ean", "value": "0195949346018"}]
+      },
+      {
+        "variant_key": "512gb-natural-titanium",
+        "display_name": "Apple iPhone 16 Pro Max 512GB Natural Titanium",
+        "attributes": {"storage": "512GB", "color": "Natural Titanium", "screen": "6.9\""},
+        "identifiers": [{"type": "ean", "value": "0195949346025"}]
+      },
+      {
+        "variant_key": "1tb-natural-titanium",
+        "display_name": "Apple iPhone 16 Pro Max 1TB Natural Titanium",
+        "attributes": {"storage": "1TB", "color": "Natural Titanium", "screen": "6.9\""},
+        "identifiers": [{"type": "ean", "value": "0195949346032"}]
+      }
+    ]
+  },
+  {
+    "brand": "Apple",
+    "product_line": "iPhone",
+    "model": "15 Pro",
+    "category": "smartphone",
+    "canonical_name": "Apple iPhone 15 Pro",
+    "release_date": "2023-09-22",
+    "variants": [
+      {
+        "variant_key": "256gb-natural-titanium",
+        "display_name": "Apple iPhone 15 Pro 256GB Natural Titanium",
+        "attributes": {"storage": "256GB", "color": "Natural Titanium", "screen": "6.1\""},
+        "identifiers": [{"type": "ean", "value": "0195949048432"}]
+      },
+      {
+        "variant_key": "256gb-blue-titanium",
+        "display_name": "Apple iPhone 15 Pro 256GB Blue Titanium",
+        "attributes": {"storage": "256GB", "color": "Blue Titanium", "screen": "6.1\""},
+        "identifiers": [{"type": "ean", "value": "0195949048449"}]
+      },
+      {
+        "variant_key": "256gb-black-titanium",
+        "display_name": "Apple iPhone 15 Pro 256GB Black Titanium",
+        "attributes": {"storage": "256GB", "color": "Black Titanium", "screen": "6.1\""},
+        "identifiers": [{"type": "ean", "value": "0195949048456"}]
+      },
+      {
+        "variant_key": "128gb-natural-titanium",
+        "display_name": "Apple iPhone 15 Pro 128GB Natural Titanium",
+        "attributes": {"storage": "128GB", "color": "Natural Titanium", "screen": "6.1\""},
+        "identifiers": [{"type": "ean", "value": "0195949048197"}]
+      },
+      {
+        "variant_key": "512gb-natural-titanium",
+        "display_name": "Apple iPhone 15 Pro 512GB Natural Titanium",
+        "attributes": {"storage": "512GB", "color": "Natural Titanium", "screen": "6.1\""},
+        "identifiers": [{"type": "ean", "value": "0195949048463"}]
+      }
+    ]
+  },
+  {
+    "brand": "Samsung",
+    "product_line": "Galaxy",
+    "model": "S25 Ultra",
+    "category": "smartphone",
+    "canonical_name": "Samsung Galaxy S25 Ultra",
+    "release_date": "2025-02-07",
+    "variants": [
+      {
+        "variant_key": "256gb-titanium-black",
+        "display_name": "Samsung Galaxy S25 Ultra 256GB Titanium Black",
+        "attributes": {"storage": "256GB", "color": "Titanium Black", "screen": "6.9\"", "ram": "12GB"},
+        "identifiers": [{"type": "ean", "value": "8806095690001"}]
+      },
+      {
+        "variant_key": "256gb-titanium-gray",
+        "display_name": "Samsung Galaxy S25 Ultra 256GB Titanium Gray",
+        "attributes": {"storage": "256GB", "color": "Titanium Gray", "screen": "6.9\"", "ram": "12GB"},
+        "identifiers": [{"type": "ean", "value": "8806095690018"}]
+      },
+      {
+        "variant_key": "512gb-titanium-black",
+        "display_name": "Samsung Galaxy S25 Ultra 512GB Titanium Black",
+        "attributes": {"storage": "512GB", "color": "Titanium Black", "screen": "6.9\"", "ram": "12GB"},
+        "identifiers": [{"type": "ean", "value": "8806095690025"}]
+      },
+      {
+        "variant_key": "1tb-titanium-black",
+        "display_name": "Samsung Galaxy S25 Ultra 1TB Titanium Black",
+        "attributes": {"storage": "1TB", "color": "Titanium Black", "screen": "6.9\"", "ram": "12GB"},
+        "identifiers": [{"type": "ean", "value": "8806095690032"}]
+      }
+    ]
+  },
+  {
+    "brand": "Samsung",
+    "product_line": "Galaxy",
+    "model": "S24 Ultra",
+    "category": "smartphone",
+    "canonical_name": "Samsung Galaxy S24 Ultra",
+    "release_date": "2024-01-17",
+    "variants": [
+      {
+        "variant_key": "256gb-titanium-black",
+        "display_name": "Samsung Galaxy S24 Ultra 256GB Titanium Black",
+        "attributes": {"storage": "256GB", "color": "Titanium Black", "screen": "6.8\"", "ram": "12GB"},
+        "identifiers": [{"type": "ean", "value": "8806095360010"}]
+      },
+      {
+        "variant_key": "512gb-titanium-black",
+        "display_name": "Samsung Galaxy S24 Ultra 512GB Titanium Black",
+        "attributes": {"storage": "512GB", "color": "Titanium Black", "screen": "6.8\"", "ram": "12GB"},
+        "identifiers": [{"type": "ean", "value": "8806095360027"}]
+      }
+    ]
+  },
+  {
+    "brand": "Google",
+    "product_line": "Pixel",
+    "model": "9 Pro",
+    "category": "smartphone",
+    "canonical_name": "Google Pixel 9 Pro",
+    "release_date": "2024-08-22",
+    "variants": [
+      {
+        "variant_key": "128gb-obsidian",
+        "display_name": "Google Pixel 9 Pro 128GB Obsidian",
+        "attributes": {"storage": "128GB", "color": "Obsidian", "screen": "6.3\"", "ram": "16GB"},
+        "identifiers": [{"type": "ean", "value": "0840244700010"}]
+      },
+      {
+        "variant_key": "256gb-porcelain",
+        "display_name": "Google Pixel 9 Pro 256GB Porcelain",
+        "attributes": {"storage": "256GB", "color": "Porcelain", "screen": "6.3\"", "ram": "16GB"},
+        "identifiers": [{"type": "ean", "value": "0840244700027"}]
+      }
+    ]
+  }
+]
