@@ -10,6 +10,7 @@ COPY . .
 
 RUN pip install --no-cache-dir .
 
-ENV PORT=8000
+COPY start.sh .
+RUN chmod +x start.sh
 
-CMD sh -c "alembic upgrade head || echo 'Migration skipped'; exec uvicorn app.main:app --host 0.0.0.0 --port \$PORT"
+CMD ["./start.sh"]
