@@ -117,8 +117,32 @@ async def browse_products(
 
     query = query.order_by(Product.brand, Product.model, ProductVariant.display_name)
 
-    count_query = select(func.count()).select_from(query.subquery())
-    total = (await db.execute(count_query)).scalar() or 0
+    count_q = (
+        select(func.count(ProductVariant.id))
+        .select_from(ProductVariant)
+        .join(Product)
+    )
+    if filters.q:
+        normalized = filters.q.strip().lower()
+        count_q = count_q.where(
+            or_(
+                ProductVariant.display_name.ilike(f"%{normalized}%"),
+                Product.canonical_name.ilike(f"%{normalized}%"),
+                Product.brand.ilike(f"%{normalized}%"),
+                func.coalesce(Product.product_line, "").ilike(f"%{normalized}%"),
+                func.similarity(ProductVariant.display_name, normalized) > 0.15,
+                func.similarity(Product.canonical_name, normalized) > 0.15,
+            )
+        )
+    if filters.category:
+        count_q = count_q.where(Product.category == filters.category.lower())
+    if filters.brand:
+        count_q = count_q.where(func.lower(Product.brand) == filters.brand.lower())
+    if filters.product_line:
+        count_q = count_q.where(func.lower(Product.product_line) == filters.product_line.lower())
+    if filters.model:
+        count_q = count_q.where(func.lower(Product.model) == filters.model.lower())
+    total = (await db.execute(count_q)).scalar() or 0
 
     offset = (filters.page - 1) * filters.per_page
     query = query.offset(offset).limit(filters.per_page)

@@ -1,6 +1,7 @@
 import type {
   AutocompleteItem,
   BrowseResponse,
+  CategorySearchResponse,
   FilterOptionsResponse,
   ProductOffersResponse,
   SearchResult,
@@ -58,6 +59,22 @@ export async function getFilters(
 ): Promise<FilterOptionsResponse> {
   const qs = category ? `?category=${encodeURIComponent(category)}` : "";
   return fetcher(`/api/filters${qs}`);
+}
+
+export async function searchCategories(
+  query: string
+): Promise<CategorySearchResponse> {
+  return fetcher(`/api/categories/search?q=${encodeURIComponent(query)}`);
+}
+
+export async function getCategoryChildren(
+  categoryId: string
+): Promise<CategorySearchResponse> {
+  return fetcher(`/api/categories/${encodeURIComponent(categoryId)}/children`);
+}
+
+export async function getTopCategories(): Promise<CategorySearchResponse> {
+  return fetcher("/api/categories/top");
 }
 
 export function formatPrice(amount: number, currency: string): string {

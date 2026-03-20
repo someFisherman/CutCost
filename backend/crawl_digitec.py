@@ -76,8 +76,7 @@ async def main():
             print(f"  {len(extracted)} offers found")
 
             for ext_offer in extracted:
-                offer_id_str = ext_offer.extracted_attributes.get("offer_id", "")
-                offer_url = f"{ext_offer.product_url}?offerId={offer_id_str}"
+                offer_url = ext_offer.product_url
 
                 existing = await session.execute(
                     select(Offer).where(Offer.url == offer_url)
@@ -108,6 +107,8 @@ async def main():
                         shipping_source="curated",
                         condition=ext_offer.condition,
                         availability=ext_offer.availability,
+                        delivery_days_min=ext_offer.delivery_days_min,
+                        delivery_days_max=ext_offer.delivery_days_max,
                         match_confidence=0.95,
                         match_method="curated_mapping",
                         match_reasons=["digitec_product_id_mapping"],

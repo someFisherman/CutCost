@@ -164,3 +164,18 @@ export type SortMode =
   | "delivery_asc";
 
 export type SearchMode = "high_trust" | "full_search";
+
+export interface CategorySuggestion {
+  id: string;
+  name: string;
+  name_de: string;
+  icon: string;
+  breadcrumb: string;
+  depth: number;
+  browse_params: Record<string, string>;
+  match_score: number;
+}
+
+export interface CategorySearchResponse {
+  categories: CategorySuggestion[];
+}

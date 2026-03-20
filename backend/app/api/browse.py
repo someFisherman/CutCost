@@ -13,6 +13,11 @@ from app.services.browse_service import (
     browse_products,
     get_filter_options,
 )
+from app.services.category_service import (
+    get_category_children,
+    get_top_categories,
+    search_categories,
+)
 
 router = APIRouter()
 
@@ -155,4 +160,66 @@ async def api_filters(
         conditions=[FilterOptionOut(value=o.value, label=o.label, count=o.count) for o in opts.conditions],
         price_min=opts.price_min,
         price_max=opts.price_max,
+    )
+
+
+class CategorySuggestionOut(BaseModel):
+    id: str
+    name: str
+    name_de: str
+    icon: str
+    breadcrumb: str
+    depth: int
+    browse_params: dict
+    match_score: float
+
+
+class CategorySearchResponse(BaseModel):
+    categories: list[CategorySuggestionOut]
+
+
+@router.get("/categories/search", response_model=CategorySearchResponse)
+async def api_search_categories(
+    q: str = Query(default="", max_length=200),
+):
+    results = search_categories(q)
+    return CategorySearchResponse(
+        categories=[
+            CategorySuggestionOut(
+                id=r.id, name=r.name, name_de=r.name_de, icon=r.icon,
+                breadcrumb=r.breadcrumb, depth=r.depth,
+                browse_params=r.browse_params, match_score=r.match_score,
+            )
+            for r in results
+        ]
+    )
+
+
+@router.get("/categories/{category_id}/children", response_model=CategorySearchResponse)
+async def api_category_children(category_id: str):
+    results = get_category_children(category_id)
+    return CategorySearchResponse(
+        categories=[
+            CategorySuggestionOut(
+                id=r.id, name=r.name, name_de=r.name_de, icon=r.icon,
+                breadcrumb=r.breadcrumb, depth=r.depth,
+                browse_params=r.browse_params, match_score=r.match_score,
+            )
+            for r in results
+        ]
+    )
+
+
+@router.get("/categories/top", response_model=CategorySearchResponse)
+async def api_top_categories():
+    results = get_top_categories()
+    return CategorySearchResponse(
+        categories=[
+            CategorySuggestionOut(
+                id=r.id, name=r.name, name_de=r.name_de, icon=r.icon,
+                breadcrumb=r.breadcrumb, depth=r.depth,
+                browse_params=r.browse_params, match_score=r.match_score,
+            )
+            for r in results
+        ]
     )

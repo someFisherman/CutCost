@@ -82,6 +82,18 @@ def _build_headers(lang: str = "de") -> dict:
     }
 
 
+def _delivery_days(classification: str) -> tuple[int | None, int | None]:
+    mapping = {
+        "TONIGHT": (0, 0),
+        "ONEDAY": (1, 1),
+        "TWODAYS": (2, 2),
+        "WITHIN4DAYS": (3, 4),
+        "WITHIN7DAYS": (5, 7),
+        "WITHIN17DAYS": (10, 17),
+    }
+    return mapping.get(classification, (None, None))
+
+
 class DigitecExtractor(BaseExtractor):
     merchant_slug = "digitec-ch"
     merchant_name = "digitec.ch"
@@ -131,6 +143,13 @@ class DigitecExtractor(BaseExtractor):
             currency = pricing.get("currency", "CHF")
             offer_type = raw.get("type", "RETAIL")
             condition = OFFER_TYPE_TO_CONDITION.get(offer_type, "new")
+            offer_id = str(raw.get("offerId", ""))
+
+            offer_url = f"{product_url}?offerId={offer_id}"
+            if condition == "refurbished":
+                offer_url = f"{product_url}?offertype=refurbished&offerid={offer_id}"
+            elif condition == "used":
+                offer_url = f"{product_url}?offertype=occasion&offerid={offer_id}"
 
             delivery_class = (
                 raw.get("deliveryOptions", {})
@@ -139,22 +158,27 @@ class DigitecExtractor(BaseExtractor):
             )
             delivery_label = DELIVERY_MAP.get(delivery_class, delivery_class.lower())
 
+            delivery_min, delivery_max = _delivery_days(delivery_class)
+
             results.append(ExtractedOffer(
                 raw_title=full_name,
                 price_amount=float(price),
                 price_currency=currency,
-                product_url=product_url,
+                product_url=offer_url,
                 ean=None,
                 availability="in_stock" if raw.get("canAddToBasket") else "out_of_stock",
                 condition=condition,
                 shipping_cost=0.0,
                 shipping_currency="CHF",
+                delivery_days_min=delivery_min,
+                delivery_days_max=delivery_max,
                 image_url=None,
                 brand="",
                 extracted_attributes={
                     "offer_type": offer_type,
                     "delivery": delivery_label,
-                    "offer_id": str(raw.get("offerId", "")),
+                    "offer_id": offer_id,
+                    "label": raw.get("label", ""),
                 },
                 raw_data=raw,
             ))

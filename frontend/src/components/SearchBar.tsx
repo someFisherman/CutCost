@@ -2,19 +2,28 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Search, ArrowRight, FolderOpen } from "lucide-react";
+import { Search, ArrowRight, FolderOpen, Compass, X } from "lucide-react";
 import { getAutocomplete } from "@/lib/api";
 import type { AutocompleteItem } from "@/lib/types";
 
-export function SearchBar({ initialQuery = "" }: { initialQuery?: string }) {
+interface SearchBarProps {
+  initialQuery?: string;
+  showGuidedHint?: boolean;
+  onSwitchToGuided?: () => void;
+}
+
+export function SearchBar({ initialQuery = "", showGuidedHint = false, onSwitchToGuided }: SearchBarProps) {
   const [query, setQuery] = useState(initialQuery);
   const [suggestions, setSuggestions] = useState<AutocompleteItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
+  const [hintDismissed, setHintDismissed] = useState(false);
   const justSubmitted = useRef(false);
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceTimer = useRef<number | null>(null);
+
+  const showGuidedPopup = showGuidedHint && !hintDismissed && query.length >= 2 && !isOpen;
 
   const fetchSuggestions = useCallback(async (q: string) => {
     if (justSubmitted.current) return;
@@ -158,6 +167,56 @@ export function SearchBar({ initialQuery = "" }: { initialQuery?: string }) {
             </li>
           ))}
         </ul>
+      )}
+
+      {showGuidedPopup && onSwitchToGuided && (
+        <div className="absolute z-50 w-full mt-2 p-4 rounded-xl
+                        bg-[var(--color-surface)] border border-[var(--color-accent)]/30
+                        shadow-lg">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-[var(--color-accent)]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Compass className="w-4 h-4 text-[var(--color-accent)]" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium mb-1">Try Guided Search</p>
+              <p className="text-xs text-[var(--color-text-secondary)] mb-3">
+                Browse by category for better results. Pick a category, then narrow down step by step.
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    onSwitchToGuided();
+                  }}
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--color-accent)] text-white hover:opacity-90 transition-opacity"
+                >
+                  Switch to Guided Search
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setHintDismissed(true);
+                  }}
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-border)] transition-colors"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setHintDismissed(true);
+              }}
+              className="text-[var(--color-text-secondary)] hover:text-[var(--color-text)] flex-shrink-0"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
       )}
     </form>
   );
