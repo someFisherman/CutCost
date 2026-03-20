@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.merchant import Merchant
 from app.models.offer import Offer
+from app.offer_visibility import EXCLUDED_OFFER_MERCHANT_SLUGS
 from app.models.product import Product, ProductVariant
 from app.models.trust import TrustScore
 
@@ -186,74 +187,130 @@ async def browse_products(
 
 
 async def get_filter_options(
-    db: AsyncSession, category: str | None = None
+    db: AsyncSession,
+    q: str | None = None,
+    category: str | None = None,
+    brand: str | None = None,
+    product_line: str | None = None,
+    model: str | None = None,
 ) -> FilterOptions:
-    """Get dynamically available filter values based on existing data."""
+    """Get dynamically available filter values scoped to the current browse context."""
 
-    base = select(ProductVariant).join(Product)
-    if category:
-        base = base.where(Product.category == category.lower())
+    def _apply_scoping(stmt, *, join_variant: bool = False):
+        """Apply all active filters as scoping constraints."""
+        if join_variant and q:
+            normalized = q.strip().lower()
+            stmt = stmt.where(
+                or_(
+                    ProductVariant.display_name.ilike(f"%{normalized}%"),
+                    Product.canonical_name.ilike(f"%{normalized}%"),
+                    Product.brand.ilike(f"%{normalized}%"),
+                    func.coalesce(Product.product_line, "").ilike(f"%{normalized}%"),
+                    func.similarity(ProductVariant.display_name, normalized) > 0.15,
+                    func.similarity(Product.canonical_name, normalized) > 0.15,
+                )
+            )
+        elif q and not join_variant:
+            normalized = q.strip().lower()
+            stmt = stmt.where(
+                or_(
+                    Product.canonical_name.ilike(f"%{normalized}%"),
+                    Product.brand.ilike(f"%{normalized}%"),
+                    func.coalesce(Product.product_line, "").ilike(f"%{normalized}%"),
+                )
+            )
+        if category:
+            stmt = stmt.where(Product.category == category.lower())
+        if brand:
+            stmt = stmt.where(func.lower(Product.brand) == brand.lower())
+        if product_line:
+            stmt = stmt.where(func.lower(Product.product_line) == product_line.lower())
+        if model:
+            stmt = stmt.where(func.lower(Product.model) == model.lower())
+        return stmt
 
-    cat_q = select(Product.category, func.count(Product.id)).group_by(Product.category)
+    cat_q = _apply_scoping(
+        select(Product.category, func.count(func.distinct(Product.id))).group_by(Product.category)
+    )
     cats = (await db.execute(cat_q)).all()
     categories = [FilterOption(value=r[0], label=r[0].title(), count=r[1]) for r in cats]
 
-    brand_q = select(Product.brand, func.count(Product.id)).group_by(Product.brand)
-    if category:
-        brand_q = brand_q.where(Product.category == category.lower())
+    brand_q = _apply_scoping(
+        select(Product.brand, func.count(func.distinct(Product.id))).group_by(Product.brand)
+    )
     brands_raw = (await db.execute(brand_q)).all()
     brands = [FilterOption(value=r[0], label=r[0], count=r[1]) for r in brands_raw]
 
-    pl_q = select(Product.product_line, func.count(Product.id)).where(Product.product_line.isnot(None)).group_by(Product.product_line)
-    if category:
-        pl_q = pl_q.where(Product.category == category.lower())
+    pl_q = _apply_scoping(
+        select(Product.product_line, func.count(func.distinct(Product.id)))
+        .where(Product.product_line.isnot(None))
+        .group_by(Product.product_line)
+    )
     pls_raw = (await db.execute(pl_q)).all()
     product_lines = [FilterOption(value=r[0], label=r[0], count=r[1]) for r in pls_raw if r[0]]
 
-    model_q = select(Product.model, func.count(Product.id)).group_by(Product.model)
-    if category:
-        model_q = model_q.where(Product.category == category.lower())
+    model_q = _apply_scoping(
+        select(Product.model, func.count(func.distinct(Product.id))).group_by(Product.model)
+    )
     models_raw = (await db.execute(model_q)).all()
     models = [FilterOption(value=r[0], label=r[0], count=r[1]) for r in models_raw]
 
-    storage_q = (
+    storage_q = _apply_scoping(
         select(
             ProductVariant.attributes["storage"].astext.label("val"),
             func.count(ProductVariant.id),
         )
+        .select_from(ProductVariant)
         .join(Product)
         .where(ProductVariant.attributes["storage"].astext.isnot(None))
-        .group_by("val")
+        .group_by("val"),
+        join_variant=True,
     )
-    if category:
-        storage_q = storage_q.where(Product.category == category.lower())
     storages_raw = (await db.execute(storage_q)).all()
     storages = [FilterOption(value=r[0], label=r[0], count=r[1]) for r in storages_raw if r[0]]
     storages.sort(key=lambda x: _parse_storage_gb(x.value))
 
-    color_q = (
+    color_q = _apply_scoping(
         select(
             ProductVariant.attributes["color"].astext.label("val"),
             func.count(ProductVariant.id),
         )
+        .select_from(ProductVariant)
         .join(Product)
         .where(ProductVariant.attributes["color"].astext.isnot(None))
-        .group_by("val")
+        .group_by("val"),
+        join_variant=True,
     )
-    if category:
-        color_q = color_q.where(Product.category == category.lower())
     colors_raw = (await db.execute(color_q)).all()
     colors = [FilterOption(value=r[0], label=r[0], count=r[1]) for r in colors_raw if r[0]]
 
+    variant_ids_q = _apply_scoping(
+        select(ProductVariant.id).select_from(ProductVariant).join(Product),
+        join_variant=True,
+    ).subquery()
+    excluded_merchant_ids = select(Merchant.id).where(
+        Merchant.slug.in_(EXCLUDED_OFFER_MERCHANT_SLUGS)
+    )
     cond_q = (
         select(Offer.condition, func.count(Offer.id))
-        .where(Offer.is_active == True)  # noqa: E712
+        .where(
+            Offer.is_active == True,  # noqa: E712
+            Offer.product_variant_id.in_(select(variant_ids_q)),
+            ~Offer.merchant_id.in_(excluded_merchant_ids),
+        )
         .group_by(Offer.condition)
     )
     conds_raw = (await db.execute(cond_q)).all()
     conditions = [FilterOption(value=r[0], label=r[0].replace("_", " ").title(), count=r[1]) for r in conds_raw]
 
-    price_q = select(func.min(Offer.price_amount), func.max(Offer.price_amount)).where(Offer.is_active == True)  # noqa: E712
+    price_q = (
+        select(func.min(Offer.price_amount), func.max(Offer.price_amount))
+        .where(
+            Offer.is_active == True,  # noqa: E712
+            Offer.product_variant_id.in_(select(variant_ids_q)),
+            ~Offer.merchant_id.in_(excluded_merchant_ids),
+        )
+    )
     price_raw = (await db.execute(price_q)).one_or_none()
     price_min = float(price_raw[0]) if price_raw and price_raw[0] else None
     price_max = float(price_raw[1]) if price_raw and price_raw[1] else None
@@ -285,9 +342,13 @@ async def _get_variant_offer_summary(
     db: AsyncSession, variant_id, filters: BrowseFilters
 ) -> dict:
     """Get offer summary for a variant: best price, count, trust, conditions."""
+    excluded_merchant_ids = select(Merchant.id).where(
+        Merchant.slug.in_(EXCLUDED_OFFER_MERCHANT_SLUGS)
+    )
     offer_q = (
         select(Offer)
         .where(Offer.product_variant_id == variant_id, Offer.is_active == True)  # noqa: E712
+        .where(~Offer.merchant_id.in_(excluded_merchant_ids))
         .options(selectinload(Offer.merchant))
     )
 

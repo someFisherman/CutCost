@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.database import get_db
 from app.models.merchant import Merchant
+from app.offer_visibility import EXCLUDED_OFFER_MERCHANT_SLUGS
 from app.models.offer import Offer
 from app.models.product import Product, ProductVariant
 from app.models.trust import TrustScore
@@ -111,10 +112,14 @@ async def get_product_offers(
     if not variant:
         raise HTTPException(status_code=404, detail="Product not found")
 
+    excluded_merchant_ids = select(Merchant.id).where(
+        Merchant.slug.in_(EXCLUDED_OFFER_MERCHANT_SLUGS)
+    )
     offer_query = (
         select(Offer)
         .where(Offer.product_variant_id == variant.id)
         .where(Offer.is_active == True)  # noqa: E712
+        .where(~Offer.merchant_id.in_(excluded_merchant_ids))
         .options(selectinload(Offer.merchant))
     )
     if condition != "all":

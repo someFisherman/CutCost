@@ -27,6 +27,7 @@ app.add_middleware(
     allow_origins=[
         settings.frontend_url,
         "http://localhost:3000",
+        "http://localhost:3001",
         "https://*.vercel.app",
         "https://*.up.railway.app",
     ],

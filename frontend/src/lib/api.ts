@@ -55,10 +55,18 @@ export async function browseProducts(
 }
 
 export async function getFilters(
-  category?: string
+  params?: Record<string, string | undefined>
 ): Promise<FilterOptionsResponse> {
-  const qs = category ? `?category=${encodeURIComponent(category)}` : "";
-  return fetcher(`/api/filters${qs}`);
+  const searchParams = new URLSearchParams();
+  if (params) {
+    for (const [key, val] of Object.entries(params)) {
+      if (val !== undefined && val !== "") {
+        searchParams.set(key, val);
+      }
+    }
+  }
+  const qs = searchParams.toString();
+  return fetcher(`/api/filters${qs ? `?${qs}` : ""}`);
 }
 
 export async function searchCategories(

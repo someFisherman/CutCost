@@ -65,9 +65,10 @@ function BrowseContent() {
       }),
   });
 
+  const filterParams = { q, category, brand, product_line, model };
   const { data: filterData, isLoading: filterLoading } = useQuery({
-    queryKey: ["filters", category],
-    queryFn: () => getFilters(category),
+    queryKey: ["filters", q, category, brand, product_line, model],
+    queryFn: () => getFilters(filterParams),
   });
 
   const handleFilterChange = (key: string, value: string | undefined) => {

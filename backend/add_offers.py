@@ -30,8 +30,6 @@ CURATED_OFFERS = [
              "url": "https://www.amazon.de/dp/B0DGWRCQFX", "delivery_min": 3, "delivery_max": 5},
             {"merchant": "interdiscount-ch", "price": 1129.00, "currency": "CHF", "condition": "new",
              "url": "https://www.interdiscount.ch/de/apple-iphone-16-pro-256gb-natural-titanium", "delivery_min": 1, "delivery_max": 3},
-            {"merchant": "mediamarkt-ch", "price": 1129.00, "currency": "CHF", "condition": "new",
-             "url": "https://www.mediamarkt.ch/de/product/apple-iphone-16-pro-256gb-natural-titanium", "delivery_min": 2, "delivery_max": 4},
             {"merchant": "backmarket-ch", "price": 899.00, "currency": "CHF", "condition": "refurbished",
              "url": "https://www.backmarket.ch/de-ch/p/iphone-16-pro-256-gb-natural-titanium/refurbished", "delivery_min": 3, "delivery_max": 7},
         ],
@@ -61,8 +59,6 @@ CURATED_OFFERS = [
              "url": "https://www.amazon.de/dp/B0DS1VGD3V", "delivery_min": 3, "delivery_max": 5},
             {"merchant": "interdiscount-ch", "price": 1399.00, "currency": "CHF", "condition": "new",
              "url": "https://www.interdiscount.ch/de/samsung-galaxy-s25-ultra-256gb-titanium-black", "delivery_min": 1, "delivery_max": 3},
-            {"merchant": "mediamarkt-ch", "price": 1399.00, "currency": "CHF", "condition": "new",
-             "url": "https://www.mediamarkt.ch/de/product/samsung-galaxy-s25-ultra-256gb", "delivery_min": 2, "delivery_max": 4},
         ],
     },
     {

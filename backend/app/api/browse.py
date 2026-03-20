@@ -145,10 +145,14 @@ async def api_browse(
 
 @router.get("/filters", response_model=FilterOptionsResponse)
 async def api_filters(
+    q: str | None = Query(default=None, max_length=500),
     category: str | None = Query(default=None, max_length=50),
+    brand: str | None = Query(default=None, max_length=100),
+    product_line: str | None = Query(default=None, max_length=100),
+    model: str | None = Query(default=None, max_length=200),
     db: AsyncSession = Depends(get_db),
 ):
-    opts = await get_filter_options(db, category)
+    opts = await get_filter_options(db, q=q, category=category, brand=brand, product_line=product_line, model=model)
 
     return FilterOptionsResponse(
         categories=[FilterOptionOut(value=o.value, label=o.label, count=o.count) for o in opts.categories],
