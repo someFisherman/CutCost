@@ -350,3 +350,26 @@ async def block_offer_url(
         message=f"Flagged {blocked} offer(s) for manual review (URL reachable)",
         action="flagged",
     )
+
+
+@router.post("/offers/unblock-url", response_model=BlockOfferUrlResponse)
+async def unblock_offer_url(
+    payload: BlockOfferUrlRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    target_url = payload.url.strip()
+    if not target_url:
+        return BlockOfferUrlResponse(blocked_count=0, message="No URL provided", action="unblocked")
+
+    res = await db.execute(
+        update(Offer)
+        .where(Offer.url == target_url)
+        .values(is_active=True, review_status="auto_approved")
+    )
+    await db.commit()
+    count = res.rowcount or 0
+    return BlockOfferUrlResponse(
+        blocked_count=count,
+        message=f"Reactivated {count} offer(s) for URL",
+        action="unblocked",
+    )
