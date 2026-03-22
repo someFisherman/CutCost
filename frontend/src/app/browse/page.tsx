@@ -19,10 +19,13 @@ function BrowseContent() {
   const queryClient = useQueryClient();
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [deepSearch, setDeepSearch] = useState<DeepSearchStatusResponse | null>(null);
+  const [deepSearchBlocking, setDeepSearchBlocking] = useState(false);
   const deepSearchJobRef = useRef<string | null>(null);
   const deepSearchQueryRef = useRef<string | null>(null);
+  const deepSearchBlockTimerRef = useRef<number | null>(null);
 
   const q = searchParams.get("q") || undefined;
+  const searchText = searchParams.get("search") || q;
   const category = searchParams.get("category") || undefined;
   const brand = searchParams.get("brand") || undefined;
   const product_line = searchParams.get("product_line") || undefined;
@@ -85,22 +88,29 @@ function BrowseContent() {
   }));
 
   useEffect(() => {
-    const shouldRunDeepSearch = !!q && q.trim().length >= 2 && page === 1;
+    const shouldRunDeepSearch = !!searchText && searchText.trim().length >= 2 && page === 1;
     if (!shouldRunDeepSearch) return;
-    if (deepSearchQueryRef.current === q && deepSearchJobRef.current) return;
+    if (deepSearchQueryRef.current === searchText && deepSearchJobRef.current) return;
 
     let cancelled = false;
     let pollTimer: number | null = null;
 
     (async () => {
       try {
-        const started = await startDeepSearch(q!);
+        const started = await startDeepSearch(searchText!);
         if (cancelled) return;
         deepSearchJobRef.current = started.job_id;
-        deepSearchQueryRef.current = q!;
+        deepSearchQueryRef.current = searchText!;
+        setDeepSearchBlocking(true);
+        if (deepSearchBlockTimerRef.current !== null) {
+          window.clearTimeout(deepSearchBlockTimerRef.current);
+        }
+        deepSearchBlockTimerRef.current = window.setTimeout(() => {
+          setDeepSearchBlocking(false);
+        }, 10000);
         setDeepSearch({
           id: started.job_id,
-          query: q!,
+          query: searchText!,
           status: started.status as DeepSearchStatusResponse["status"],
           progress: started.progress,
           scanned_products: 0,
@@ -117,9 +127,10 @@ function BrowseContent() {
           const status = await getDeepSearchStatus(deepSearchJobRef.current);
           if (cancelled) return;
           setDeepSearch(status);
+          await queryClient.invalidateQueries({ queryKey: ["browse"] });
+          await queryClient.invalidateQueries({ queryKey: ["filters"] });
           if (status.status === "completed" || status.status === "failed" || status.status === "not_found") {
-            await queryClient.invalidateQueries({ queryKey: ["browse"] });
-            await queryClient.invalidateQueries({ queryKey: ["filters"] });
+            setDeepSearchBlocking(false);
             return;
           }
           pollTimer = window.setTimeout(poll, 2000);
@@ -138,8 +149,11 @@ function BrowseContent() {
       if (pollTimer !== null) {
         window.clearTimeout(pollTimer);
       }
+      if (deepSearchBlockTimerRef.current !== null) {
+        window.clearTimeout(deepSearchBlockTimerRef.current);
+      }
     };
-  }, [q, page, queryClient]);
+  }, [searchText, page, queryClient]);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -148,18 +162,18 @@ function BrowseContent() {
           <a href="/" className="font-bold text-xl shrink-0">
             Cut<span className="text-[var(--color-accent)]">Cost</span>
           </a>
-          <SearchBar initialQuery={q || ""} />
+          <SearchBar initialQuery={searchText || ""} />
         </div>
       </header>
 
       <main className="flex-1 max-w-7xl mx-auto px-4 py-6 w-full">
         {/* Active filter tags */}
-        {(activeTags.length > 0 || q) && (
+        {(activeTags.length > 0 || q || searchText) && (
           <div className="flex flex-wrap items-center gap-2 mb-4">
-            {q && (
+            {(searchText || q) && (
               <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm bg-[var(--color-accent)] text-white">
-                &quot;{q}&quot;
-                <button onClick={() => updateParams({ q: undefined })} className="hover:opacity-70">
+                &quot;{searchText || q}&quot;
+                <button onClick={() => updateParams({ q: undefined, search: undefined })} className="hover:opacity-70">
                   <X className="w-3 h-3" />
                 </button>
               </span>
@@ -275,6 +289,13 @@ function BrowseContent() {
               <div className="flex items-center justify-center py-20">
                 <Loader2 className="w-6 h-6 animate-spin text-[var(--color-accent)]" />
                 <span className="ml-2 text-[var(--color-text-secondary)]">Loading products...</span>
+              </div>
+            ) : deepSearchBlocking ? (
+              <div className="flex items-center justify-center py-20">
+                <Loader2 className="w-6 h-6 animate-spin text-[var(--color-accent)]" />
+                <span className="ml-2 text-[var(--color-text-secondary)]">
+                  Analyzing links, trust and product match quality... (about 10s)
+                </span>
               </div>
             ) : browseData && browseData.products.length > 0 ? (
               <>

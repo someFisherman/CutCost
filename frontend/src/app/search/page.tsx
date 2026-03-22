@@ -29,9 +29,10 @@ function SearchContent() {
 
     if (data.type === "multiple" || data.type === "browse_redirect") {
       const params = new URLSearchParams();
-      params.set("q", q);
+      params.set("search", q);
       if (data.parsed_query?.brand) params.set("brand", data.parsed_query.brand);
       if (data.parsed_query?.product_line) params.set("product_line", data.parsed_query.product_line);
+      if (data.parsed_query?.model) params.set("model", data.parsed_query.model);
       if (data.parsed_query?.storage) params.set("storage", data.parsed_query.storage);
       if (data.parsed_query?.color) params.set("color", data.parsed_query.color);
       router.replace(`/browse?${params.toString()}`);

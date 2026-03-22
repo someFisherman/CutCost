@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -95,6 +95,15 @@ class ProductOffersResponse(BaseModel):
     variant: VariantDetailOut
     offers: list[OfferOut]
     meta: dict
+
+
+class BlockOfferUrlRequest(BaseModel):
+    url: str
+
+
+class BlockOfferUrlResponse(BaseModel):
+    blocked_count: int
+    message: str
 
 
 @router.get("/products/{slug}/offers", response_model=ProductOffersResponse)
@@ -288,4 +297,26 @@ def _cost_to_out(cost: TotalCostBreakdown) -> CostBreakdownOut:
         total_high=cost.total_high,
         currency=cost.currency,
         confidence=cost.confidence,
+    )
+
+
+@router.post("/offers/block-url", response_model=BlockOfferUrlResponse)
+async def block_offer_url(
+    payload: BlockOfferUrlRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    target_url = payload.url.strip()
+    if not target_url:
+        return BlockOfferUrlResponse(blocked_count=0, message="No URL provided")
+
+    res = await db.execute(
+        update(Offer)
+        .where(Offer.url == target_url, Offer.is_active == True)  # noqa: E712
+        .values(is_active=False)
+    )
+    await db.commit()
+    blocked = res.rowcount or 0
+    return BlockOfferUrlResponse(
+        blocked_count=blocked,
+        message=f"Blocked {blocked} offer(s) for URL",
     )

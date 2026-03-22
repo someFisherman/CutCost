@@ -1,9 +1,10 @@
 import { ExternalLink, Trophy, AlertTriangle } from "lucide-react";
-import { formatCountry, formatPrice } from "@/lib/api";
+import { blockOfferUrl, formatCountry, formatPrice } from "@/lib/api";
 import type { Offer } from "@/lib/types";
 import { TrustBadge } from "./TrustBadge";
 import { CostBreakdown } from "./CostBreakdown";
 import clsx from "clsx";
+import { useState } from "react";
 
 interface OfferCardProps {
   offer: Offer;
@@ -13,6 +14,19 @@ export function OfferCard({ offer }: OfferCardProps) {
   const isBestDeal = offer.label === "best_deal";
   const isRisky = offer.label === "risky";
   const clickUrl = offer.affiliate_url || offer.url;
+  const [isBlocking, setIsBlocking] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
+
+  async function handleBlockLink() {
+    if (isBlocking || isBlocked) return;
+    setIsBlocking(true);
+    try {
+      await blockOfferUrl(offer.url);
+      setIsBlocked(true);
+    } finally {
+      setIsBlocking(false);
+    }
+  }
 
   return (
     <div
@@ -116,6 +130,15 @@ export function OfferCard({ offer }: OfferCardProps) {
         <ExternalLink className="w-4 h-4" />
         {isRisky ? "View at your own risk" : "View Deal"}
       </a>
+
+      <button
+        type="button"
+        onClick={handleBlockLink}
+        disabled={isBlocking || isBlocked}
+        className="mt-2 w-full py-2 text-xs rounded-lg border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-border)] transition-colors disabled:opacity-60"
+      >
+        {isBlocked ? "Link blocked" : isBlocking ? "Blocking..." : "Block broken link"}
+      </button>
 
       {offer.is_affiliate && (
         <p className="mt-2 text-[10px] text-[var(--color-text-secondary)] text-center">

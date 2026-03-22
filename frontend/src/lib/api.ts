@@ -19,8 +19,15 @@ async function fetcher<T>(path: string): Promise<T> {
   return res.json();
 }
 
-async function postFetcher<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, { method: "POST" });
+async function postFetcher<T>(
+  path: string,
+  body?: unknown
+): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
   if (!res.ok) {
     throw new Error(`API error: ${res.status} ${res.statusText}`);
   }
@@ -101,6 +108,10 @@ export async function startDeepSearch(query: string): Promise<DeepSearchStartRes
 
 export async function getDeepSearchStatus(jobId: string): Promise<DeepSearchStatusResponse> {
   return fetcher(`/api/deep-search/${encodeURIComponent(jobId)}`);
+}
+
+export async function blockOfferUrl(url: string): Promise<{ blocked_count: number; message: string }> {
+  return postFetcher("/api/offers/block-url", { url });
 }
 
 export function formatPrice(amount: number, currency: string): string {
