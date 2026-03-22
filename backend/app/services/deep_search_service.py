@@ -5,10 +5,11 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +24,7 @@ from app.services.search_service import parse_query_to_filters
 
 MAPPINGS_PATH = Path(__file__).resolve().parents[2] / "seeds" / "digitec_mappings.json"
 JOB_TIMEOUT_SECONDS = 30
+MIN_RUNTIME_SECONDS = 10
 MAX_TRACKED_JOBS = 100
 
 
@@ -39,6 +41,8 @@ class DeepSearchJob:
     completed_at: str | None = None
     message: str = ""
     error: str | None = None
+    source_errors: int = 0
+    error_samples: list[str] = field(default_factory=list)
 
 
 _jobs: dict[str, DeepSearchJob] = {}
@@ -224,18 +228,22 @@ async def _run_deep_search(job_id: str) -> None:
 
                 try:
                     extractor = _extractor_for_slug(merchant_slug)
-                    offers = await extractor.extract_offers_by_id(entry["product_id"])
+                    offers = await _extract_with_retries(extractor, entry["product_id"])
                     now = datetime.now(timezone.utc)
                     for ext in offers:
                         upserted += await _upsert_offer(db, variant, merchant, ext, now)
-                except Exception:
+                except Exception as exc:
                     failed_sources += 1
                     await db.rollback()
                     scanned += 1
+                    err = f"{merchant_slug}:{entry['product_id']} {type(exc).__name__}: {str(exc)[:120]}"
                     async with _jobs_lock:
                         j = _jobs[job_id]
                         j.scanned_products = scanned
                         j.offers_upserted = upserted
+                        j.source_errors = failed_sources
+                        if len(j.error_samples) < 5:
+                            j.error_samples.append(err)
                         j.progress = int((scanned / max(1, len(candidates))) * 100)
                         j.message = f"Scanned {scanned}/{len(candidates)} products ({failed_sources} source errors)"
                     continue
@@ -247,8 +255,13 @@ async def _run_deep_search(job_id: str) -> None:
                     j = _jobs[job_id]
                     j.scanned_products = scanned
                     j.offers_upserted = upserted
+                    j.source_errors = failed_sources
                     j.progress = int((scanned / max(1, len(candidates))) * 100)
                     j.message = f"Scanned {scanned}/{len(candidates)} products"
+
+        elapsed_total = (datetime.now(timezone.utc) - started).total_seconds()
+        if elapsed_total < MIN_RUNTIME_SECONDS:
+            await asyncio.sleep(MIN_RUNTIME_SECONDS - elapsed_total)
 
         async with _jobs_lock:
             j = _jobs[job_id]
@@ -266,6 +279,25 @@ async def _run_deep_search(job_id: str) -> None:
             j.error = str(exc)
             j.completed_at = _now_iso()
             j.message = "Deep search failed"
+
+
+async def _extract_with_retries(extractor: DigitecExtractor | GalaxusExtractor, product_id: int):
+    last_exc: Exception | None = None
+    for attempt in range(3):
+        try:
+            return await extractor.extract_offers_by_id(product_id)
+        except Exception as exc:  # external source instability
+            last_exc = exc
+            retryable = True
+            if isinstance(exc, httpx.HTTPStatusError):
+                status = exc.response.status_code
+                retryable = status in (403, 408, 409, 425, 429, 500, 502, 503, 504)
+            if not retryable or attempt == 2:
+                break
+            await asyncio.sleep(0.8 * (attempt + 1))
+    if last_exc is not None:
+        raise last_exc
+    return []
 
 
 async def start_deep_search(query: str) -> DeepSearchJob:

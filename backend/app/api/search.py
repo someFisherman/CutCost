@@ -1,7 +1,7 @@
 """Search API endpoints."""
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -87,6 +87,8 @@ class DeepSearchStatusResponse(BaseModel):
     completed_at: str | None = None
     message: str
     error: str | None = None
+    source_errors: int = 0
+    error_samples: list[str] = Field(default_factory=list)
 
 
 @router.get("/autocomplete", response_model=AutocompleteResponse)

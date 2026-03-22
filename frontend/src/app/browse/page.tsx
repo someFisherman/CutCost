@@ -91,6 +91,7 @@ function BrowseContent() {
     const shouldRunDeepSearch = !!searchText && searchText.trim().length >= 2 && page === 1;
     if (!shouldRunDeepSearch) return;
     if (deepSearchQueryRef.current === searchText && deepSearchJobRef.current) return;
+    setDeepSearchBlocking(true);
 
     let cancelled = false;
     let pollTimer: number | null = null;
@@ -120,6 +121,8 @@ function BrowseContent() {
           completed_at: null,
           message: started.message,
           error: null,
+          source_errors: 0,
+          error_samples: [],
         });
 
         const poll = async () => {
@@ -220,6 +223,11 @@ function BrowseContent() {
             <p className="mt-2 text-xs text-[var(--color-text-secondary)]">
               {deepSearch.scanned_products}/{deepSearch.total_products || "?"} products scanned · {deepSearch.offers_upserted} offers updated
             </p>
+            {!!deepSearch.source_errors && (
+              <p className="mt-1 text-xs text-[var(--color-warning)]">
+                source errors: {deepSearch.source_errors}
+              </p>
+            )}
           </div>
         )}
 
@@ -285,17 +293,17 @@ function BrowseContent() {
               totalResults={browseData?.total || 0}
             />
 
-            {browseLoading ? (
-              <div className="flex items-center justify-center py-20">
-                <Loader2 className="w-6 h-6 animate-spin text-[var(--color-accent)]" />
-                <span className="ml-2 text-[var(--color-text-secondary)]">Loading products...</span>
-              </div>
-            ) : deepSearchBlocking ? (
+            {deepSearchBlocking ? (
               <div className="flex items-center justify-center py-20">
                 <Loader2 className="w-6 h-6 animate-spin text-[var(--color-accent)]" />
                 <span className="ml-2 text-[var(--color-text-secondary)]">
                   Analyzing links, trust and product match quality... (about 10s)
                 </span>
+              </div>
+            ) : browseLoading ? (
+              <div className="flex items-center justify-center py-20">
+                <Loader2 className="w-6 h-6 animate-spin text-[var(--color-accent)]" />
+                <span className="ml-2 text-[var(--color-text-secondary)]">Loading products...</span>
               </div>
             ) : browseData && browseData.products.length > 0 ? (
               <>

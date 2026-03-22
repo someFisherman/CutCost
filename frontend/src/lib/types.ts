@@ -199,4 +199,6 @@ export interface DeepSearchStatusResponse {
   completed_at: string | null;
   message: string;
   error: string | null;
+  source_errors?: number;
+  error_samples?: string[];
 }

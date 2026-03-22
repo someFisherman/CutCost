@@ -1,6 +1,7 @@
 """Product & Offer API endpoints."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+import httpx
 from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -104,6 +105,7 @@ class BlockOfferUrlRequest(BaseModel):
 class BlockOfferUrlResponse(BaseModel):
     blocked_count: int
     message: str
+    action: str = "blocked"
 
 
 @router.get("/products/{slug}/offers", response_model=ProductOffersResponse)
@@ -309,14 +311,42 @@ async def block_offer_url(
     if not target_url:
         return BlockOfferUrlResponse(blocked_count=0, message="No URL provided")
 
+    should_disable = False
+    try:
+        async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
+            head = await client.head(target_url)
+            status = head.status_code
+            if status == 405:
+                get_resp = await client.get(target_url)
+                status = get_resp.status_code
+            should_disable = status >= 400
+    except Exception:
+        # Network failures are treated as unreliable URL checks.
+        should_disable = False
+
+    if should_disable:
+        res = await db.execute(
+            update(Offer)
+            .where(Offer.url == target_url, Offer.is_active == True)  # noqa: E712
+            .values(is_active=False)
+        )
+        await db.commit()
+        blocked = res.rowcount or 0
+        return BlockOfferUrlResponse(
+            blocked_count=blocked,
+            message=f"Blocked {blocked} offer(s): URL returned HTTP error",
+            action="blocked",
+        )
+
     res = await db.execute(
         update(Offer)
-        .where(Offer.url == target_url, Offer.is_active == True)  # noqa: E712
-        .values(is_active=False)
+        .where(Offer.url == target_url)
+        .values(review_status="pending")
     )
     await db.commit()
     blocked = res.rowcount or 0
     return BlockOfferUrlResponse(
         blocked_count=blocked,
-        message=f"Blocked {blocked} offer(s) for URL",
+        message=f"Flagged {blocked} offer(s) for manual review (URL reachable)",
+        action="flagged",
     )
