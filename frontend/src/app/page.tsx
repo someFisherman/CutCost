@@ -3,10 +3,10 @@
 import { SearchBar } from "@/components/SearchBar";
 import { GuidedSearch } from "@/components/GuidedSearch";
 import { Footer } from "@/components/Footer";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
-export default function HomePage() {
+function HomeContent() {
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<"guided" | "search">("guided");
   const guidedQuery = searchParams.get("q") || "";
@@ -105,6 +105,20 @@ export default function HomePage() {
 
       <Footer />
     </div>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-screen">
+          <p className="text-sm text-[var(--color-text-secondary)]">Loading...</p>
+        </div>
+      }
+    >
+      <HomeContent />
+    </Suspense>
   );
 }
 
