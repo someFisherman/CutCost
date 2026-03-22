@@ -201,4 +201,5 @@ export interface DeepSearchStatusResponse {
   error: string | null;
   source_errors?: number;
   error_samples?: string[];
+  blocked_sources?: string[];
 }

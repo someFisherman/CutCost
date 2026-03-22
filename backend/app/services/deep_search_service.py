@@ -26,6 +26,7 @@ MAPPINGS_PATH = Path(__file__).resolve().parents[2] / "seeds" / "digitec_mapping
 JOB_TIMEOUT_SECONDS = 30
 MIN_RUNTIME_SECONDS = 10
 MAX_TRACKED_JOBS = 100
+IGNORED_DEEPSEARCH_MERCHANTS = {"digitec-ch", "galaxus-ch"}
 
 
 @dataclass
@@ -43,6 +44,7 @@ class DeepSearchJob:
     error: str | None = None
     source_errors: int = 0
     error_samples: list[str] = field(default_factory=list)
+    blocked_sources: list[str] = field(default_factory=list)
 
 
 _jobs: dict[str, DeepSearchJob] = {}
@@ -54,6 +56,8 @@ def _now_iso() -> str:
 
 
 def _extractor_for_slug(slug: str):
+    if slug in IGNORED_DEEPSEARCH_MERCHANTS:
+        raise ValueError(f"Merchant '{slug}' is ignored in deep search")
     if slug == "galaxus-ch":
         return GalaxusExtractor(lang="de")
     return DigitecExtractor(lang="de")
@@ -65,6 +69,8 @@ def _load_mapping_entries() -> list[dict]:
     raw = json.loads(MAPPINGS_PATH.read_text(encoding="utf-8"))
     rows: list[dict] = []
     for merchant_slug, entries in raw.items():
+        if merchant_slug in IGNORED_DEEPSEARCH_MERCHANTS:
+            continue
         for entry in entries:
             rows.append(
                 {
@@ -189,12 +195,24 @@ async def _run_deep_search(job_id: str) -> None:
     async with _jobs_lock:
         _jobs[job_id].total_products = len(candidates)
 
+    if not candidates:
+        async with _jobs_lock:
+            j = _jobs[job_id]
+            j.status = "completed"
+            j.progress = 100
+            j.scanned_products = 0
+            j.offers_upserted = 0
+            j.completed_at = _now_iso()
+            j.message = "No internet deep-search sources connected yet (Digitec/Galaxus excluded)"
+        return
+
     try:
         async with async_session() as db:
             merchant_cache: dict[str, Merchant] = {}
             scanned = 0
             upserted = 0
             failed_sources = 0
+            blocked_sources: set[str] = set()
 
             for entry in candidates:
                 elapsed = (datetime.now(timezone.utc) - started).total_seconds()
@@ -204,6 +222,18 @@ async def _run_deep_search(job_id: str) -> None:
                     break
 
                 merchant_slug = entry["merchant_slug"]
+                if merchant_slug in blocked_sources:
+                    scanned += 1
+                    async with _jobs_lock:
+                        j = _jobs[job_id]
+                        j.scanned_products = scanned
+                        j.offers_upserted = upserted
+                        j.source_errors = failed_sources
+                        j.blocked_sources = sorted(blocked_sources)
+                        j.progress = int((scanned / max(1, len(candidates))) * 100)
+                        j.message = f"Skipping blocked source(s): {', '.join(sorted(blocked_sources))}"
+                    continue
+
                 if merchant_slug not in merchant_cache:
                     m = await db.execute(select(Merchant).where(Merchant.slug == merchant_slug))
                     merchant_cache[merchant_slug] = m.scalar_one_or_none()
@@ -234,6 +264,8 @@ async def _run_deep_search(job_id: str) -> None:
                         upserted += await _upsert_offer(db, variant, merchant, ext, now)
                 except Exception as exc:
                     failed_sources += 1
+                    if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 403:
+                        blocked_sources.add(merchant_slug)
                     await db.rollback()
                     scanned += 1
                     err = f"{merchant_slug}:{entry['product_id']} {type(exc).__name__}: {str(exc)[:120]}"
@@ -242,6 +274,7 @@ async def _run_deep_search(job_id: str) -> None:
                         j.scanned_products = scanned
                         j.offers_upserted = upserted
                         j.source_errors = failed_sources
+                        j.blocked_sources = sorted(blocked_sources)
                         if len(j.error_samples) < 5:
                             j.error_samples.append(err)
                         j.progress = int((scanned / max(1, len(candidates))) * 100)
@@ -256,6 +289,7 @@ async def _run_deep_search(job_id: str) -> None:
                     j.scanned_products = scanned
                     j.offers_upserted = upserted
                     j.source_errors = failed_sources
+                    j.blocked_sources = sorted(blocked_sources)
                     j.progress = int((scanned / max(1, len(candidates))) * 100)
                     j.message = f"Scanned {scanned}/{len(candidates)} products"
 
@@ -270,7 +304,11 @@ async def _run_deep_search(job_id: str) -> None:
             j.completed_at = _now_iso()
             if not j.message.startswith("Timed out"):
                 suffix = f" with {failed_sources} source errors" if failed_sources else ""
-                j.message = f"Completed. Updated {j.offers_upserted} offers{suffix}"
+                blocked_suffix = (
+                    f" (blocked: {', '.join(j.blocked_sources)})"
+                    if j.blocked_sources else ""
+                )
+                j.message = f"Completed. Updated {j.offers_upserted} offers{suffix}{blocked_suffix}"
 
     except Exception as exc:
         async with _jobs_lock:

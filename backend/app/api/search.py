@@ -89,6 +89,7 @@ class DeepSearchStatusResponse(BaseModel):
     error: str | None = None
     source_errors: int = 0
     error_samples: list[str] = Field(default_factory=list)
+    blocked_sources: list[str] = Field(default_factory=list)
 
 
 @router.get("/autocomplete", response_model=AutocompleteResponse)
