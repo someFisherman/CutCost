@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import uuid
 from dataclasses import dataclass, asdict, field
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import parse_qs, unquote, urlparse
 
 import httpx
-from sqlalchemy import select
+from selectolax.parser import HTMLParser
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session
@@ -186,16 +189,13 @@ async def _run_deep_search(job_id: str) -> None:
         job.message = "Starting deep search..."
 
     started = datetime.now(timezone.utc)
-    entries = _load_mapping_entries()
     job_query = _jobs[job_id].query
-    candidates = [e for e in entries if _matches_query(e, job_query)]
-    if not candidates:
-        candidates = entries
+    search_urls = await _search_web_urls(job_query, limit=24)
 
     async with _jobs_lock:
-        _jobs[job_id].total_products = len(candidates)
+        _jobs[job_id].total_products = len(search_urls)
 
-    if not candidates:
+    if not search_urls:
         async with _jobs_lock:
             j = _jobs[job_id]
             j.status = "completed"
@@ -203,72 +203,96 @@ async def _run_deep_search(job_id: str) -> None:
             j.scanned_products = 0
             j.offers_upserted = 0
             j.completed_at = _now_iso()
-            j.message = "No internet deep-search sources connected yet (Digitec/Galaxus excluded)"
+            j.message = "No web results found for this query"
         return
 
     try:
         async with async_session() as db:
-            merchant_cache: dict[str, Merchant] = {}
+            variant = await _best_variant_for_query(db, job_query)
+            if not variant:
+                async with _jobs_lock:
+                    j = _jobs[job_id]
+                    j.status = "completed"
+                    j.progress = 100
+                    j.completed_at = _now_iso()
+                    j.message = "No catalog product match for query. Use guided search to specify brand/model."
+                return
+
             scanned = 0
             upserted = 0
             failed_sources = 0
             blocked_sources: set[str] = set()
+            seen_domains: set[str] = set()
+            query_tokens = [t for t in re.split(r"\s+", job_query.lower()) if len(t) >= 2]
 
-            for entry in candidates:
+            for candidate_url in search_urls:
                 elapsed = (datetime.now(timezone.utc) - started).total_seconds()
                 if elapsed > JOB_TIMEOUT_SECONDS:
                     async with _jobs_lock:
                         _jobs[job_id].message = "Timed out at 30s, returning partial results"
                     break
 
-                merchant_slug = entry["merchant_slug"]
-                if merchant_slug in blocked_sources:
-                    scanned += 1
-                    async with _jobs_lock:
-                        j = _jobs[job_id]
-                        j.scanned_products = scanned
-                        j.offers_upserted = upserted
-                        j.source_errors = failed_sources
-                        j.blocked_sources = sorted(blocked_sources)
-                        j.progress = int((scanned / max(1, len(candidates))) * 100)
-                        j.message = f"Skipping blocked source(s): {', '.join(sorted(blocked_sources))}"
-                    continue
-
-                if merchant_slug not in merchant_cache:
-                    m = await db.execute(select(Merchant).where(Merchant.slug == merchant_slug))
-                    merchant_cache[merchant_slug] = m.scalar_one_or_none()
-                merchant = merchant_cache[merchant_slug]
-                if not merchant:
+                parsed = urlparse(candidate_url)
+                domain = (parsed.hostname or "").lower().replace("www.", "")
+                if not domain:
                     scanned += 1
                     continue
-
-                variant_q = await db.execute(
-                    select(ProductVariant)
-                    .join(Product)
-                    .where(
-                        Product.product_line == entry["product_line"],
-                        Product.model == entry["model"],
-                        ProductVariant.variant_key == entry["variant_key"],
-                    )
-                )
-                variant = variant_q.scalar_one_or_none()
-                if not variant:
+                if domain in blocked_sources:
                     scanned += 1
                     continue
 
                 try:
-                    extractor = _extractor_for_slug(merchant_slug)
-                    offers = await _extract_with_retries(extractor, entry["product_id"])
+                    snapshot = await _fetch_page_snapshot(candidate_url)
+                    if snapshot is None:
+                        failed_sources += 1
+                        blocked_sources.add(domain)
+                        scanned += 1
+                        continue
+
+                    title = snapshot["title"]
+                    text = snapshot["text"]
+                    relevance = _match_relevance(query_tokens, title, text)
+                    if relevance < 0.4:
+                        scanned += 1
+                        continue
+
+                    merchant = await _get_or_create_merchant(db, snapshot["url"])
+                    if not merchant:
+                        scanned += 1
+                        continue
+
+                    if domain in seen_domains and relevance < 0.7:
+                        scanned += 1
+                        continue
+                    seen_domains.add(domain)
+
+                    if snapshot["price"] is None:
+                        scanned += 1
+                        continue
+
                     now = datetime.now(timezone.utc)
-                    for ext in offers:
-                        upserted += await _upsert_offer(db, variant, merchant, ext, now)
+                    ext = ExtractedOffer(
+                        raw_title=title,
+                        price_amount=float(snapshot["price"]),
+                        price_currency=snapshot["currency"] or merchant.currency,
+                        product_url=snapshot["url"],
+                        availability="in_stock",
+                        condition="new",
+                        shipping_cost=0.0,
+                        shipping_currency=merchant.currency,
+                        extracted_attributes={
+                            "source": "internet_search",
+                            "domain": domain,
+                            "relevance": relevance,
+                        },
+                    )
+                    upserted += await _upsert_offer(db, variant, merchant, ext, now)
                 except Exception as exc:
                     failed_sources += 1
-                    if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 403:
-                        blocked_sources.add(merchant_slug)
+                    blocked_sources.add(domain)
                     await db.rollback()
                     scanned += 1
-                    err = f"{merchant_slug}:{entry['product_id']} {type(exc).__name__}: {str(exc)[:120]}"
+                    err = f"{domain} {type(exc).__name__}: {str(exc)[:140]}"
                     async with _jobs_lock:
                         j = _jobs[job_id]
                         j.scanned_products = scanned
@@ -277,8 +301,8 @@ async def _run_deep_search(job_id: str) -> None:
                         j.blocked_sources = sorted(blocked_sources)
                         if len(j.error_samples) < 5:
                             j.error_samples.append(err)
-                        j.progress = int((scanned / max(1, len(candidates))) * 100)
-                        j.message = f"Scanned {scanned}/{len(candidates)} products ({failed_sources} source errors)"
+                        j.progress = int((scanned / max(1, len(search_urls))) * 100)
+                        j.message = f"Scanned {scanned}/{len(search_urls)} pages ({failed_sources} source errors)"
                     continue
 
                 await db.commit()
@@ -290,8 +314,8 @@ async def _run_deep_search(job_id: str) -> None:
                     j.offers_upserted = upserted
                     j.source_errors = failed_sources
                     j.blocked_sources = sorted(blocked_sources)
-                    j.progress = int((scanned / max(1, len(candidates))) * 100)
-                    j.message = f"Scanned {scanned}/{len(candidates)} products"
+                    j.progress = int((scanned / max(1, len(search_urls))) * 100)
+                    j.message = f"Scanned {scanned}/{len(search_urls)} pages"
 
         elapsed_total = (datetime.now(timezone.utc) - started).total_seconds()
         if elapsed_total < MIN_RUNTIME_SECONDS:
@@ -336,6 +360,159 @@ async def _extract_with_retries(extractor: DigitecExtractor | GalaxusExtractor, 
     if last_exc is not None:
         raise last_exc
     return []
+
+
+async def _search_web_urls(query: str, limit: int = 20) -> list[str]:
+    """Run a generic web search and return candidate product URLs."""
+    search_query = f"{query} buy price shop"
+    endpoints = [
+        ("https://html.duckduckgo.com/html/", {"q": search_query}),
+        ("https://duckduckgo.com/html/", {"q": search_query}),
+    ]
+    urls: list[str] = []
+    for endpoint, params in endpoints:
+        try:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+                resp = await client.get(endpoint, params=params, headers={"User-Agent": "Mozilla/5.0"})
+                resp.raise_for_status()
+                tree = HTMLParser(resp.text)
+                links = tree.css("a.result__a")
+                for node in links:
+                    href = node.attributes.get("href", "")
+                    if not href:
+                        continue
+                    if "duckduckgo.com/l/?" in href and "uddg=" in href:
+                        parsed = urlparse(href)
+                        uddg = parse_qs(parsed.query).get("uddg", [""])[0]
+                        href = unquote(uddg) if uddg else href
+                    if not href.startswith("http"):
+                        continue
+                    host = (urlparse(href).hostname or "").lower()
+                    if not host or "duckduckgo.com" in host:
+                        continue
+                    urls.append(href)
+                    if len(urls) >= limit:
+                        break
+        except Exception:
+            continue
+        if urls:
+            break
+    # Keep insertion order unique
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for u in urls:
+        if u not in seen:
+            deduped.append(u)
+            seen.add(u)
+    return deduped[:limit]
+
+
+async def _best_variant_for_query(db: AsyncSession, query: str) -> ProductVariant | None:
+    q = query.strip()
+    if not q:
+        return None
+    res = await db.execute(
+        select(ProductVariant)
+        .join(Product)
+        .where(
+            func.similarity(ProductVariant.display_name, q) > 0.08
+        )
+        .order_by(func.similarity(ProductVariant.display_name, q).desc())
+        .limit(1)
+    )
+    return res.scalar_one_or_none()
+
+
+def _match_relevance(tokens: list[str], title: str, text: str) -> float:
+    if not tokens:
+        return 0.0
+    haystack = f"{title} {text[:4000]}".lower()
+    hits = sum(1 for t in tokens if t in haystack)
+    return hits / max(1, len(tokens))
+
+
+def _extract_price_and_currency(text: str) -> tuple[float | None, str | None]:
+    patterns = [
+        r"(CHF|EUR|USD|€|\$|Fr\.?)\s*([0-9]{1,3}(?:[ '\.,][0-9]{3})*(?:[,\.\s][0-9]{2})?)",
+        r"([0-9]{1,3}(?:[ '\.,][0-9]{3})*(?:[,\.\s][0-9]{2})?)\s*(CHF|EUR|USD|€|\$|Fr\.?)",
+    ]
+    for pattern in patterns:
+        m = re.search(pattern, text, flags=re.IGNORECASE)
+        if not m:
+            continue
+        a, b = m.group(1), m.group(2)
+        if a.upper() in {"CHF", "EUR", "USD", "€", "$", "FR."}:
+            cur_raw, amount_raw = a, b
+        else:
+            amount_raw, cur_raw = a, b
+        amount_norm = amount_raw.replace("'", "").replace(" ", "").replace(",", ".")
+        amount_norm = re.sub(r"(?<=\d)\.(?=\d{3}(?:\D|$))", "", amount_norm)
+        try:
+            value = float(amount_norm)
+        except ValueError:
+            continue
+        cur_map = {"€": "EUR", "$": "USD", "FR.": "CHF", "FR": "CHF"}
+        currency = cur_map.get(cur_raw.upper(), cur_raw.upper())
+        if value <= 0:
+            continue
+        return value, currency
+    return None, None
+
+
+async def _fetch_page_snapshot(url: str) -> dict | None:
+    async with httpx.AsyncClient(timeout=12, follow_redirects=True) as client:
+        resp = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+        if resp.status_code >= 400:
+            return None
+        ctype = (resp.headers.get("content-type") or "").lower()
+        if "text/html" not in ctype:
+            return None
+        html = resp.text
+        tree = HTMLParser(html)
+        title_node = tree.css_first("title")
+        title = title_node.text(strip=True) if title_node else ""
+        body_text = tree.body.text(separator=" ", strip=True) if tree.body else ""
+        price, currency = _extract_price_and_currency(f"{title}\n{body_text[:12000]}")
+        return {
+            "url": str(resp.url),
+            "title": title,
+            "text": body_text,
+            "price": price,
+            "currency": currency,
+        }
+
+
+async def _get_or_create_merchant(db: AsyncSession, url: str) -> Merchant | None:
+    host = (urlparse(url).hostname or "").lower().replace("www.", "")
+    if not host:
+        return None
+    slug = re.sub(r"[^a-z0-9]+", "-", host).strip("-")[:100]
+    existing = await db.execute(select(Merchant).where(Merchant.slug == slug))
+    merchant = existing.scalar_one_or_none()
+    if merchant:
+        return merchant
+    tld = host.split(".")[-1] if "." in host else ""
+    country_map = {"ch": "CH", "de": "DE", "at": "AT", "fr": "FR", "it": "IT", "com": "US"}
+    currency_map = {"CH": "CHF", "DE": "EUR", "AT": "EUR", "FR": "EUR", "IT": "EUR", "US": "USD"}
+    country = country_map.get(tld, "DE")
+    currency = currency_map.get(country, "EUR")
+    merchant = Merchant(
+        id=uuid.uuid4(),
+        slug=slug,
+        name=host,
+        website=f"https://{host}",
+        country=country,
+        currency=currency,
+        is_marketplace=False,
+        is_active=True,
+        is_curated=False,
+        affiliate_config={},
+        extraction_config={"source": "internet_search"},
+        notes="Auto-created from deep internet search",
+    )
+    db.add(merchant)
+    await db.flush()
+    return merchant
 
 
 async def start_deep_search(query: str) -> DeepSearchJob:
