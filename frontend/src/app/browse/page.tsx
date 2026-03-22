@@ -228,6 +228,11 @@ function BrowseContent() {
                 source errors: {deepSearch.source_errors}
               </p>
             )}
+            {deepSearch.error_samples && deepSearch.error_samples.length > 0 && (
+              <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
+                first error: {deepSearch.error_samples[0]}
+              </p>
+            )}
           </div>
         )}
 
