@@ -31,11 +31,12 @@ const ICON_MAP: Record<string, React.ElementType> = {
 
 interface GuidedSearchProps {
   onBrowse?: (params: Record<string, string>) => void;
+  initialQuery?: string;
 }
 
-export function GuidedSearch({ onBrowse }: GuidedSearchProps) {
+export function GuidedSearch({ onBrowse, initialQuery = "" }: GuidedSearchProps) {
   const router = useRouter();
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [categories, setCategories] = useState<CategorySuggestion[]>([]);
   const [breadcrumb, setBreadcrumb] = useState<{ id: string; name: string }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -57,6 +58,12 @@ export function GuidedSearch({ onBrowse }: GuidedSearchProps) {
   useEffect(() => {
     loadTopCategories();
   }, [loadTopCategories]);
+
+  useEffect(() => {
+    if (initialQuery.trim().length > 0) {
+      setQuery(initialQuery.trim());
+    }
+  }, [initialQuery]);
 
   const handleSearch = useCallback(async (q: string) => {
     try {

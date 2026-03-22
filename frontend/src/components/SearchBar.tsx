@@ -12,6 +12,26 @@ interface SearchBarProps {
   onSwitchToGuided?: () => void;
 }
 
+const GENERIC_GUIDED_TERMS = new Set([
+  "sofa", "sofas", "couch", "tisch", "table", "stuhl", "chair",
+  "maus", "mouse", "computermaus", "monitor", "tv", "laptop",
+]);
+
+const BRAND_HINTS = new Set([
+  "apple", "samsung", "google", "logitech", "razer", "asus", "lenovo",
+  "hp", "dell", "sony", "xiaomi", "huawei",
+]);
+
+function shouldForceGuidedSearch(raw: string): boolean {
+  const q = raw.trim().toLowerCase();
+  if (!q) return false;
+  const tokens = q.split(/\s+/).filter(Boolean);
+  if (tokens.some((t) => BRAND_HINTS.has(t))) return false;
+  if (tokens.length === 1 && GENERIC_GUIDED_TERMS.has(tokens[0])) return true;
+  if (tokens.length <= 2 && tokens.every((t) => GENERIC_GUIDED_TERMS.has(t))) return true;
+  return false;
+}
+
 export function SearchBar({ initialQuery = "", showGuidedHint = false, onSwitchToGuided }: SearchBarProps) {
   const [query, setQuery] = useState(initialQuery);
   const [suggestions, setSuggestions] = useState<AutocompleteItem[]>([]);
@@ -90,7 +110,12 @@ export function SearchBar({ initialQuery = "", showGuidedHint = false, onSwitchT
         router.push(`/product/${item.slug}`);
       }
     } else if (query.trim()) {
-      router.push(`/browse?q=${encodeURIComponent(query.trim())}`);
+      const value = query.trim();
+      if (shouldForceGuidedSearch(value)) {
+        router.push(`/browse?guided=1&search=${encodeURIComponent(value)}`);
+      } else {
+        router.push(`/browse?q=${encodeURIComponent(value)}`);
+      }
     }
 
     setTimeout(() => {

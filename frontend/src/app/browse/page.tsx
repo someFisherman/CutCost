@@ -26,6 +26,7 @@ function BrowseContent() {
 
   const q = searchParams.get("q") || undefined;
   const searchText = searchParams.get("search") || q;
+  const forceGuided = searchParams.get("guided") === "1";
   const category = searchParams.get("category") || undefined;
   const brand = searchParams.get("brand") || undefined;
   const product_line = searchParams.get("product_line") || undefined;
@@ -88,7 +89,7 @@ function BrowseContent() {
   }));
 
   useEffect(() => {
-    const shouldRunDeepSearch = !!searchText && searchText.trim().length >= 2 && page === 1;
+    const shouldRunDeepSearch = !forceGuided && !!searchText && searchText.trim().length >= 2 && page === 1;
     if (!shouldRunDeepSearch) return;
     if (deepSearchQueryRef.current === searchText && deepSearchJobRef.current) return;
     setDeepSearchBlocking(true);
@@ -156,7 +157,7 @@ function BrowseContent() {
         window.clearTimeout(deepSearchBlockTimerRef.current);
       }
     };
-  }, [searchText, page, queryClient]);
+  }, [searchText, page, queryClient, forceGuided]);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -203,6 +204,23 @@ function BrowseContent() {
           mode={mode}
           onModeChange={(m) => updateParams({ mode: m, page: undefined })}
         />
+
+        {forceGuided && (
+          <div className="mt-3 mb-4 rounded-xl border border-[var(--color-accent)]/40 bg-[var(--color-accent)]/10 p-3">
+            <p className="text-sm font-medium">
+              Query too broad for reliable cheapest-offer matching.
+            </p>
+            <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
+              Use Guided Search first (e.g. brand/model/spec), then CutCost can target the real lowest valid offer.
+            </p>
+            <a
+              href={`/?guided=1&q=${encodeURIComponent(searchText || "")}`}
+              className="inline-block mt-2 px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--color-accent)] text-white hover:opacity-90 transition-opacity"
+            >
+              Force Guided Search
+            </a>
+          </div>
+        )}
 
         {deepSearch && (
           <div className="mt-3 mb-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
@@ -343,10 +361,27 @@ function BrowseContent() {
               </>
             ) : (
               <div className="text-center py-20">
-                <p className="text-lg font-medium mb-2">No products found</p>
-                <p className="text-[var(--color-text-secondary)]">
-                  Try adjusting your filters or search query.
-                </p>
+                {forceGuided ? (
+                  <>
+                    <p className="text-lg font-medium mb-2">Guided Search recommended</p>
+                    <p className="text-[var(--color-text-secondary)] mb-3">
+                      This query is too generic. Pick category and specs first so we can find the cheapest exact match.
+                    </p>
+                    <a
+                      href={`/?guided=1&q=${encodeURIComponent(searchText || "")}`}
+                      className="inline-block px-4 py-2 rounded-lg bg-[var(--color-accent)] text-white text-sm font-medium hover:opacity-90 transition-opacity"
+                    >
+                      Open Guided Search
+                    </a>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-lg font-medium mb-2">No products found</p>
+                    <p className="text-[var(--color-text-secondary)]">
+                      Try adjusting your filters or search query.
+                    </p>
+                  </>
+                )}
               </div>
             )}
           </div>

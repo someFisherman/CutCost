@@ -3,10 +3,19 @@
 import { SearchBar } from "@/components/SearchBar";
 import { GuidedSearch } from "@/components/GuidedSearch";
 import { Footer } from "@/components/Footer";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 export default function HomePage() {
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<"guided" | "search">("guided");
+  const guidedQuery = searchParams.get("q") || "";
+
+  useEffect(() => {
+    if (searchParams.get("guided") === "1") {
+      setActiveTab("guided");
+    }
+  }, [searchParams]);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -48,7 +57,7 @@ export default function HomePage() {
         </div>
 
         {/* Guided search */}
-        {activeTab === "guided" && <GuidedSearch />}
+        {activeTab === "guided" && <GuidedSearch initialQuery={guidedQuery} />}
 
         {/* Quick search */}
         {activeTab === "search" && (
