@@ -202,4 +202,20 @@ export interface DeepSearchStatusResponse {
   source_errors?: number;
   error_samples?: string[];
   blocked_sources?: string[];
+  review_items?: DeepSearchReviewItem[];
+  approved_count?: number;
+  rejected_count?: number;
+}
+
+export interface DeepSearchReviewItem {
+  id: string;
+  url: string;
+  domain: string;
+  title: string;
+  price: number | null;
+  currency: string | null;
+  relevance: number;
+  understanding: string;
+  feedback: "pending" | "approve" | "reject";
+  note: string;
 }

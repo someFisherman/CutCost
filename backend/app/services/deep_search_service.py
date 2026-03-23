@@ -26,6 +26,7 @@ from app.offer_visibility import EXCLUDED_OFFER_MERCHANT_SLUGS, EXCLUDED_OFFER_U
 from app.services.search_service import parse_query_to_filters
 
 MAPPINGS_PATH = Path(__file__).resolve().parents[2] / "seeds" / "digitec_mappings.json"
+TRAINING_PATH = Path(__file__).resolve().parents[2] / "seeds" / "deep_search_training.json"
 JOB_TIMEOUT_SECONDS = 30
 MIN_RUNTIME_SECONDS = 10
 MAX_TRACKED_JOBS = 100
@@ -48,10 +49,32 @@ class DeepSearchJob:
     source_errors: int = 0
     error_samples: list[str] = field(default_factory=list)
     blocked_sources: list[str] = field(default_factory=list)
+    review_items: list[dict] = field(default_factory=list)
+    approved_count: int = 0
+    rejected_count: int = 0
 
 
 _jobs: dict[str, DeepSearchJob] = {}
 _jobs_lock = asyncio.Lock()
+_training_lock = asyncio.Lock()
+_training_state: dict = {"domain_scores": {}}
+
+
+def _load_training_state() -> dict:
+    if not TRAINING_PATH.exists():
+        return {"domain_scores": {}}
+    try:
+        return json.loads(TRAINING_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {"domain_scores": {}}
+
+
+def _save_training_state(state: dict) -> None:
+    TRAINING_PATH.parent.mkdir(parents=True, exist_ok=True)
+    TRAINING_PATH.write_text(json.dumps(state, ensure_ascii=True, indent=2), encoding="utf-8")
+
+
+_training_state = _load_training_state()
 
 
 def _now_iso() -> str:
@@ -252,6 +275,23 @@ async def _run_deep_search(job_id: str) -> None:
                     title = snapshot["title"]
                     text = snapshot["text"]
                     relevance = _match_relevance(query_tokens, title, text)
+                    review_item = {
+                        "id": str(uuid.uuid4()),
+                        "url": snapshot["url"],
+                        "domain": domain,
+                        "title": title[:240],
+                        "price": snapshot["price"],
+                        "currency": snapshot["currency"],
+                        "relevance": round(relevance, 3),
+                        "understanding": _build_understanding(query_tokens, title, text),
+                        "feedback": "pending",
+                        "note": "",
+                    }
+                    async with _jobs_lock:
+                        j = _jobs[job_id]
+                        if len(j.review_items) < 40:
+                            j.review_items.append(review_item)
+
                     if relevance < 0.4:
                         scanned += 1
                         continue
@@ -284,6 +324,7 @@ async def _run_deep_search(job_id: str) -> None:
                             "source": "internet_search",
                             "domain": domain,
                             "relevance": relevance,
+                            "review_item_id": review_item["id"],
                         },
                     )
                     upserted += await _upsert_offer(db, variant, merchant, ext, now)
@@ -404,7 +445,13 @@ async def _search_web_urls(query: str, limit: int = 20) -> list[str]:
         if u not in seen:
             deduped.append(u)
             seen.add(u)
-    return deduped[:limit]
+    scored = []
+    for u in deduped:
+        host = (urlparse(u).hostname or "").lower().replace("www.", "")
+        score = float(_training_state.get("domain_scores", {}).get(host, 0))
+        scored.append((u, score))
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return [u for u, _ in scored[:limit]]
 
 
 async def _best_variant_for_query(db: AsyncSession, query: str) -> ProductVariant | None:
@@ -429,6 +476,14 @@ def _match_relevance(tokens: list[str], title: str, text: str) -> float:
     haystack = f"{title} {text[:4000]}".lower()
     hits = sum(1 for t in tokens if t in haystack)
     return hits / max(1, len(tokens))
+
+
+def _build_understanding(tokens: list[str], title: str, text: str) -> str:
+    haystack = f"{title} {text[:1500]}".lower()
+    matched = [t for t in tokens if t in haystack][:8]
+    if not matched:
+        return "No strong query-token match detected."
+    return f"Matched tokens: {', '.join(matched)}"
 
 
 def _extract_price_and_currency(text: str) -> tuple[float | None, str | None]:
@@ -513,6 +568,60 @@ async def _get_or_create_merchant(db: AsyncSession, url: str) -> Merchant | None
     db.add(merchant)
     await db.flush()
     return merchant
+
+
+async def submit_deep_search_feedback(
+    job_id: str,
+    candidate_id: str,
+    decision: str,
+    note: str | None = None,
+) -> dict | None:
+    normalized = decision.strip().lower()
+    if normalized not in {"approve", "reject"}:
+        return None
+
+    async with _jobs_lock:
+        job = _jobs.get(job_id)
+        if not job:
+            return None
+        candidate = next((x for x in job.review_items if x.get("id") == candidate_id), None)
+        if not candidate:
+            return None
+
+        previous = candidate.get("feedback", "pending")
+        candidate["feedback"] = normalized
+        candidate["note"] = (note or "").strip()
+
+        if previous != normalized:
+            if previous == "approve":
+                job.approved_count = max(0, job.approved_count - 1)
+            elif previous == "reject":
+                job.rejected_count = max(0, job.rejected_count - 1)
+            if normalized == "approve":
+                job.approved_count += 1
+            elif normalized == "reject":
+                job.rejected_count += 1
+
+        domain = str(candidate.get("domain", "")).lower()
+
+    score_after = 0
+    if domain:
+        async with _training_lock:
+            domain_scores = _training_state.setdefault("domain_scores", {})
+            current = int(domain_scores.get(domain, 0))
+            delta = 1 if normalized == "approve" else -1
+            updated = max(-20, min(20, current + delta))
+            domain_scores[domain] = updated
+            _save_training_state(_training_state)
+            score_after = updated
+
+    return {
+        "job_id": job_id,
+        "candidate_id": candidate_id,
+        "decision": normalized,
+        "domain": domain,
+        "domain_score": score_after,
+    }
 
 
 async def start_deep_search(query: str) -> DeepSearchJob:

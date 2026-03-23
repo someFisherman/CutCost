@@ -10,6 +10,7 @@ from app.services.deep_search_service import (
     deep_search_job_to_dict,
     get_deep_search_job,
     start_deep_search,
+    submit_deep_search_feedback,
 )
 from app.services.search_service import autocomplete, parse_query_to_filters, search_products
 
@@ -90,6 +91,25 @@ class DeepSearchStatusResponse(BaseModel):
     source_errors: int = 0
     error_samples: list[str] = Field(default_factory=list)
     blocked_sources: list[str] = Field(default_factory=list)
+    review_items: list[dict] = Field(default_factory=list)
+    approved_count: int = 0
+    rejected_count: int = 0
+
+
+class DeepSearchFeedbackRequest(BaseModel):
+    candidate_id: str
+    decision: str  # approve | reject
+    note: str | None = None
+
+
+class DeepSearchFeedbackResponse(BaseModel):
+    ok: bool
+    message: str
+    job_id: str
+    candidate_id: str
+    decision: str
+    domain: str
+    domain_score: int
 
 
 @router.get("/autocomplete", response_model=AutocompleteResponse)
@@ -226,3 +246,35 @@ async def api_get_deep_search(job_id: str):
             error=None,
         )
     return DeepSearchStatusResponse(**deep_search_job_to_dict(job))
+
+
+@router.post("/deep-search/{job_id}/feedback", response_model=DeepSearchFeedbackResponse)
+async def api_deep_search_feedback(
+    job_id: str,
+    payload: DeepSearchFeedbackRequest,
+):
+    result = await submit_deep_search_feedback(
+        job_id=job_id,
+        candidate_id=payload.candidate_id,
+        decision=payload.decision,
+        note=payload.note,
+    )
+    if not result:
+        return DeepSearchFeedbackResponse(
+            ok=False,
+            message="Feedback target not found or invalid decision",
+            job_id=job_id,
+            candidate_id=payload.candidate_id,
+            decision=payload.decision,
+            domain="",
+            domain_score=0,
+        )
+    return DeepSearchFeedbackResponse(
+        ok=True,
+        message="Feedback saved",
+        job_id=result["job_id"],
+        candidate_id=result["candidate_id"],
+        decision=result["decision"],
+        domain=result["domain"],
+        domain_score=result["domain_score"],
+    )

@@ -2,14 +2,14 @@
 
 import { useSearchParams, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { browseProducts, getDeepSearchStatus, getFilters, startDeepSearch } from "@/lib/api";
+import { browseProducts, getDeepSearchStatus, getFilters, startDeepSearch, submitDeepSearchFeedback } from "@/lib/api";
 import { SearchBar } from "@/components/SearchBar";
 import { FilterSidebar } from "@/components/FilterSidebar";
 import { SortBar } from "@/components/SortBar";
 import { ModeToggle } from "@/components/ModeToggle";
 import { ProductCard } from "@/components/ProductCard";
 import { Footer } from "@/components/Footer";
-import { Loader2, SlidersHorizontal, X } from "lucide-react";
+import { Check, Loader2, SlidersHorizontal, X } from "lucide-react";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { DeepSearchStatusResponse, SearchMode, SortMode } from "@/lib/types";
 
@@ -20,6 +20,7 @@ function BrowseContent() {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [deepSearch, setDeepSearch] = useState<DeepSearchStatusResponse | null>(null);
   const [deepSearchBlocking, setDeepSearchBlocking] = useState(false);
+  const [feedbackBusy, setFeedbackBusy] = useState<Record<string, boolean>>({});
   const deepSearchJobRef = useRef<string | null>(null);
   const deepSearchQueryRef = useRef<string | null>(null);
   const deepSearchBlockTimerRef = useRef<number | null>(null);
@@ -81,6 +82,22 @@ function BrowseContent() {
 
   const handleFilterChange = (key: string, value: string | undefined) => {
     updateParams({ [key]: value, page: undefined });
+  };
+
+  const handleDeepSearchFeedback = async (
+    candidateId: string,
+    decision: "approve" | "reject"
+  ) => {
+    const jobId = deepSearchJobRef.current;
+    if (!jobId) return;
+    setFeedbackBusy((prev) => ({ ...prev, [candidateId]: true }));
+    try {
+      await submitDeepSearchFeedback(jobId, { candidate_id: candidateId, decision });
+      const status = await getDeepSearchStatus(jobId);
+      setDeepSearch(status);
+    } finally {
+      setFeedbackBusy((prev) => ({ ...prev, [candidateId]: false }));
+    }
   };
 
   const activeTags = Object.entries(activeFilters).map(([key, value]) => ({
@@ -255,6 +272,53 @@ function BrowseContent() {
               <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
                 first error: {deepSearch.error_samples[0]}
               </p>
+            )}
+            {deepSearch.review_items && deepSearch.review_items.length > 0 && (
+              <div className="mt-3 border-t border-[var(--color-border)] pt-3">
+                <p className="text-xs font-medium mb-2">
+                  Training candidates ({deepSearch.approved_count || 0} approved, {deepSearch.rejected_count || 0} rejected)
+                </p>
+                <div className="space-y-2">
+                  {deepSearch.review_items.slice(0, 5).map((item) => (
+                    <div key={item.id} className="rounded-lg border border-[var(--color-border)] p-2">
+                      <p className="text-xs font-medium truncate">{item.title || item.url}</p>
+                      <p className="text-[11px] text-[var(--color-text-secondary)] truncate">
+                        {item.domain} · relevance {Math.round((item.relevance || 0) * 100)}%
+                        {item.price ? ` · ${item.price} ${item.currency || ""}` : ""}
+                      </p>
+                      <p className="text-[11px] text-[var(--color-text-secondary)] truncate">
+                        {item.understanding}
+                      </p>
+                      <div className="mt-2 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleDeepSearchFeedback(item.id, "approve")}
+                          disabled={!!feedbackBusy[item.id]}
+                          className="px-2 py-1 text-[11px] rounded-md bg-[var(--color-success)] text-white disabled:opacity-60"
+                        >
+                          <span className="inline-flex items-center gap-1"><Check className="w-3 h-3" /> Yes</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeepSearchFeedback(item.id, "reject")}
+                          disabled={!!feedbackBusy[item.id]}
+                          className="px-2 py-1 text-[11px] rounded-md bg-[var(--color-danger)] text-white disabled:opacity-60"
+                        >
+                          <span className="inline-flex items-center gap-1"><X className="w-3 h-3" /> No</span>
+                        </button>
+                        <a
+                          href={item.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[11px] text-[var(--color-accent)] hover:underline"
+                        >
+                          Open
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         )}

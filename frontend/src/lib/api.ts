@@ -110,6 +110,13 @@ export async function getDeepSearchStatus(jobId: string): Promise<DeepSearchStat
   return fetcher(`/api/deep-search/${encodeURIComponent(jobId)}`);
 }
 
+export async function submitDeepSearchFeedback(
+  jobId: string,
+  payload: { candidate_id: string; decision: "approve" | "reject"; note?: string }
+): Promise<{ ok: boolean; message: string; domain_score: number }> {
+  return postFetcher(`/api/deep-search/${encodeURIComponent(jobId)}/feedback`, payload);
+}
+
 export async function blockOfferUrl(url: string): Promise<{ blocked_count: number; message: string }> {
   return postFetcher("/api/offers/block-url", { url });
 }
