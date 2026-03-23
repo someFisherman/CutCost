@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 import httpx
 from selectolax.parser import HTMLParser
+from slugify import slugify
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -233,12 +234,15 @@ async def _run_deep_search(job_id: str) -> None:
         async with async_session() as db:
             variant = await _best_variant_for_query(db, job_query)
             if not variant:
+                variant = await _ensure_variant_for_query(db, job_query)
+                await db.commit()
+            if not variant:
                 async with _jobs_lock:
                     j = _jobs[job_id]
                     j.status = "completed"
                     j.progress = 100
                     j.completed_at = _now_iso()
-                    j.message = "No catalog product match for query. Use guided search to specify brand/model."
+                    j.message = "Could not initialize product target for deep search"
                 return
 
             scanned = 0
@@ -468,6 +472,53 @@ async def _best_variant_for_query(db: AsyncSession, query: str) -> ProductVarian
         .limit(1)
     )
     return res.scalar_one_or_none()
+
+
+async def _ensure_variant_for_query(db: AsyncSession, query: str) -> ProductVariant | None:
+    q = query.strip()
+    if not q:
+        return None
+    existing = await _best_variant_for_query(db, q)
+    if existing:
+        return existing
+
+    tokens = [t for t in re.split(r"\s+", q) if t]
+    brand = tokens[0].capitalize() if tokens else "Unknown"
+    model = " ".join(tokens[1:])[:180] if len(tokens) > 1 else q[:180]
+    base_slug = slugify(q)[:80] or f"query-{uuid.uuid4().hex[:8]}"
+    product_slug = f"{base_slug}-{uuid.uuid4().hex[:6]}"
+    variant_slug = f"{product_slug}-default"
+
+    product = Product(
+        id=uuid.uuid4(),
+        category="general",
+        brand=brand,
+        product_line=None,
+        model=model or q[:180],
+        canonical_name=q[:400],
+        short_name=q[:180],
+        slug=product_slug,
+        image_url=None,
+        release_date=None,
+        discontinued=False,
+        metadata_={"source": "deep_search_autocreate"},
+    )
+    db.add(product)
+    await db.flush()
+
+    variant = ProductVariant(
+        id=uuid.uuid4(),
+        product_id=product.id,
+        variant_key="default",
+        display_name=q[:400],
+        slug=variant_slug,
+        attributes={"query": q},
+        image_url=None,
+        is_default=True,
+    )
+    db.add(variant)
+    await db.flush()
+    return variant
 
 
 def _match_relevance(tokens: list[str], title: str, text: str) -> float:
